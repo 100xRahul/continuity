@@ -3,6 +3,7 @@ package continuity
 import (
 	"bytes"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -69,25 +70,74 @@ func Snapshot(directory string) GitSnapshot {
 
 func Fingerprint(directory string) (string, error) {
 	root, err := GitRoot(directory)
+	var files []string
 	if err != nil {
 		root = directory
+		files, err = sourceFiles(root)
+	} else {
+		files, err = gitSourceFiles(root)
 	}
-	files, err := sourceFiles(root)
 	if err != nil {
 		return "", err
 	}
 	hash := sha256.New()
 	for _, relative := range files {
-		contents, err := os.ReadFile(filepath.Join(root, relative))
+		path := filepath.Join(root, relative)
+		info, err := os.Lstat(path)
+		if errors.Is(err, os.ErrNotExist) {
+			hash.Write([]byte(relative))
+			hash.Write([]byte{0})
+			hash.Write([]byte("missing"))
+			hash.Write([]byte{0})
+			continue
+		}
 		if err != nil {
 			return "", err
 		}
 		hash.Write([]byte(relative))
 		hash.Write([]byte{0})
+		if info.Mode()&os.ModeSymlink != 0 {
+			target, err := os.Readlink(path)
+			if err != nil {
+				return "", err
+			}
+			hash.Write([]byte("symlink:"))
+			hash.Write([]byte(target))
+			hash.Write([]byte{0})
+			continue
+		}
+		if !info.Mode().IsRegular() {
+			hash.Write([]byte("nonregular"))
+			hash.Write([]byte{0})
+			continue
+		}
+		contents, err := os.ReadFile(path)
+		if err != nil {
+			return "", err
+		}
 		hash.Write(contents)
 		hash.Write([]byte{0})
 	}
 	return fmt.Sprintf("sha256:%x", hash.Sum(nil)), nil
+}
+
+func gitSourceFiles(root string) ([]string, error) {
+	output, err := git(root, "ls-files", "-co", "--exclude-standard", "-z")
+	if err != nil {
+		return nil, err
+	}
+	seen := map[string]bool{}
+	files := []string{}
+	for _, item := range strings.Split(output, "\x00") {
+		relative := filepath.ToSlash(item)
+		if relative == "" || ignoredDirectory(relative) || ignoredFile(relative) || seen[relative] {
+			continue
+		}
+		seen[relative] = true
+		files = append(files, relative)
+	}
+	sort.Strings(files)
+	return files, nil
 }
 
 func sourceFiles(root string) ([]string, error) {
@@ -107,6 +157,9 @@ func sourceFiles(root string) ([]string, error) {
 			if ignoredDirectory(relative) {
 				return filepath.SkipDir
 			}
+			return nil
+		}
+		if entry.Type()&os.ModeSymlink == 0 && !entry.Type().IsRegular() {
 			return nil
 		}
 		if ignoredFile(relative) {
@@ -131,8 +184,11 @@ func ignoredDirectory(relative string) bool {
 
 func ignoredFile(relative string) bool {
 	base := filepath.Base(relative)
+	if filepath.ToSlash(relative) == "continuity" {
+		return true
+	}
 	switch base {
-	case StateFilename, "AGENTS.md", "CLAUDE.md", "GEMINI.md", "opencode.json", ".gitignore", "README.md":
+	case ".git", StateFilename, "AGENTS.md", "CLAUDE.md", "GEMINI.md", "opencode.json", ".gitignore", "README.md":
 		return true
 	default:
 		return strings.HasSuffix(base, ".tmp")
@@ -145,6 +201,41 @@ func LastStateCommit(directory string) string {
 		return ""
 	}
 	return strings.TrimSpace(output)
+}
+
+func CommitExists(directory, revision string) bool {
+	_, err := ResolveCommit(directory, revision)
+	return err == nil
+}
+
+func ResolveCommit(directory, revision string) (string, error) {
+	if strings.TrimSpace(revision) == "" {
+		return "", errors.New("commit revision is required")
+	}
+	output, err := git(directory, "rev-parse", "--verify", revision+"^{commit}")
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(output), nil
+}
+
+// CommitIsAncestor reports whether revision has been integrated into the
+// current checkout's HEAD. A false result with no error is an ordinary
+// non-ancestor, not a Git failure.
+func CommitIsAncestor(directory, revision string) (bool, error) {
+	command := exec.Command("git", "merge-base", "--is-ancestor", revision, "HEAD")
+	command.Dir = directory
+	var stderr bytes.Buffer
+	command.Stderr = &stderr
+	err := command.Run()
+	if err == nil {
+		return true, nil
+	}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
+		return false, nil
+	}
+	return false, fmt.Errorf("git merge-base --is-ancestor %s HEAD: %s", revision, strings.TrimSpace(stderr.String()))
 }
 
 func ChangedSinceState(directory string) ([]string, error) {

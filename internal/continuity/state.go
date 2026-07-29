@@ -40,10 +40,11 @@ var metadataOrder = []string{
 }
 
 type State struct {
-	Path     string
-	Meta     map[string]string
-	Body     string
-	Sections map[string]string
+	Path              string
+	Meta              map[string]string
+	Body              string
+	Sections          map[string]string
+	DuplicateSections []string
 }
 
 type Validation struct {
@@ -99,6 +100,9 @@ func parseFrontMatter(input string) (map[string]string, error) {
 			return nil, fmt.Errorf("invalid front matter at line %d", index+1)
 		}
 		key = strings.TrimSpace(key)
+		if _, exists := meta[key]; exists {
+			return nil, fmt.Errorf("duplicate front matter field %q", key)
+		}
 		value = strings.Trim(strings.TrimSpace(value), "\"")
 		meta[key] = value
 	}
@@ -115,11 +119,15 @@ func normalizeBody(body string) string {
 
 func (s *State) parseSections() {
 	s.Sections = map[string]string{}
+	s.DuplicateSections = nil
 	lines := strings.Split(s.Body, "\n")
 	var current string
 	var contents []string
 	flush := func() {
 		if current != "" {
+			if _, exists := s.Sections[current]; exists {
+				s.DuplicateSections = append(s.DuplicateSections, current)
+			}
 			s.Sections[current] = strings.Trim(strings.Join(contents, "\n"), "\n")
 		}
 	}
@@ -207,8 +215,26 @@ func (s *State) Render() string {
 
 func (s *State) Save() error {
 	contents := []byte(s.Render())
-	temp := s.Path + ".tmp"
-	if err := os.WriteFile(temp, contents, 0o644); err != nil {
+	directory := filepath.Dir(s.Path)
+	file, err := os.CreateTemp(directory, "."+filepath.Base(s.Path)+"-*")
+	if err != nil {
+		return err
+	}
+	temp := file.Name()
+	defer os.Remove(temp)
+	if err := file.Chmod(0o644); err != nil {
+		file.Close()
+		return err
+	}
+	if _, err := file.Write(contents); err != nil {
+		file.Close()
+		return err
+	}
+	if err := file.Sync(); err != nil {
+		file.Close()
+		return err
+	}
+	if err := file.Close(); err != nil {
 		return err
 	}
 	return os.Rename(temp, s.Path)
@@ -227,10 +253,21 @@ func (s *State) Validate(budget int) Validation {
 	if s.Meta["schema"] != "1" {
 		result.Errorf("unsupported schema %q; expected 1", s.Meta["schema"])
 	}
+	switch s.Meta["status"] {
+	case "ready", "working", "blocked":
+	default:
+		result.Errorf("unsupported status %q", s.Meta["status"])
+	}
+	if _, err := time.Parse(time.RFC3339, s.Meta["updated_at"]); err != nil {
+		result.Errorf("updated_at must be RFC3339: %v", err)
+	}
 	for _, section := range RequiredSections {
 		if _, present := s.Sections[section]; !present {
 			result.Errorf("required section %q is missing", section)
 		}
+	}
+	for _, section := range s.DuplicateSections {
+		result.Errorf("section %q appears more than once", section)
 	}
 	if len(s.Render()) > budget {
 		result.Errorf("state is %d bytes; budget is %d bytes", len(s.Render()), budget)
@@ -238,6 +275,23 @@ func (s *State) Validate(budget int) Validation {
 	if active := strings.TrimSpace(s.Meta["active_task"]); active != "" && active != "none" {
 		if !strings.Contains(s.Section("Active Work"), "Task: "+active) {
 			result.Errorf("active_task %q does not match Active Work", active)
+		}
+	}
+	tasks, taskErr := ParseTasks(s.Section("Ready Queue"))
+	if taskErr == nil {
+		active := []string{}
+		for _, task := range tasks {
+			if task.Status == ">" {
+				active = append(active, task.ID)
+			}
+		}
+		declared := strings.TrimSpace(s.Meta["active_task"])
+		if declared == "" || declared == "none" {
+			if len(active) > 0 {
+				result.Errorf("active_task is none but Ready Queue marks %s active", strings.Join(active, ", "))
+			}
+		} else if len(active) != 1 || active[0] != declared {
+			result.Errorf("active_task %q does not match Ready Queue active marker", declared)
 		}
 	}
 	for _, issue := range AnalyzeTasks(s.Section("Ready Queue")) {
@@ -356,7 +410,7 @@ Validation: none
 ## Handoff
 
 Last completed: state initialization.
-Immediate restart action: Read this file, run %s brief, then select authorized work.
-`, project, objective, project, "continuity")
+Immediate restart action: Run %s context and %s status, then claim authorized work in this worktree.
+`, project, objective, project, "continuity", "continuity")
 	return NewState(path, meta, body)
 }

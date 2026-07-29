@@ -10,13 +10,15 @@ import (
 func TestCrossHarnessAdaptersPointToSharedProtocol(t *testing.T) {
 	root := moduleRoot(t)
 	required := map[string][]string{
-		"AGENTS.md":                            {"PROJECT_STATE.md", "continuity brief", "project-continuity"},
-		"CLAUDE.md":                            {"AGENTS.md", "PROJECT_STATE.md"},
-		"GEMINI.md":                            {"AGENTS.md", "PROJECT_STATE.md"},
-		".github/copilot-instructions.md":      {"@AGENTS.md", "project-continuity"},
-		".cursor/rules/project-continuity.mdc": {"AGENTS.md", "PROJECT_STATE.md"},
-		"opencode.json":                        {"AGENTS.md"},
-		".agents/skills/project-continuity/SKILL.md": {"name: project-continuity", "continuity brief", "continuity finalize"},
+		"AGENTS.md":                                  {"PROJECT_STATE.md", "continuity context", "continuity start", "one writer"},
+		"CLAUDE.md":                                  {"AGENTS.md", "PROJECT_STATE.md"},
+		"GEMINI.md":                                  {"AGENTS.md", "PROJECT_STATE.md"},
+		".github/copilot-instructions.md":            {"@AGENTS.md", "project-continuity"},
+		".cursor/rules/project-continuity.mdc":       {"AGENTS.md", "PROJECT_STATE.md"},
+		".codex/hooks.json":                          {"SessionStart", "SubagentStart", "UserPromptSubmit", "PreToolUse", "continuity.sh"},
+		".codex/hooks/continuity.sh":                 {"codex-hook", "continuity"},
+		"opencode.json":                              {"AGENTS.md"},
+		".agents/skills/project-continuity/SKILL.md": {"name: project-continuity", "continuity context", "continuity integrate"},
 	}
 	for relative, fragments := range required {
 		contents, err := os.ReadFile(filepath.Join(root, relative))
@@ -62,6 +64,8 @@ func TestInstallAdaptersPreservesExistingInstructions(t *testing.T) {
 		"GEMINI.md",
 		".github/copilot-instructions.md",
 		".cursor/rules/project-continuity.mdc",
+		".codex/hooks.json",
+		".codex/hooks/continuity.sh",
 		"opencode.json",
 		".agents/skills/project-continuity/SKILL.md",
 	} {

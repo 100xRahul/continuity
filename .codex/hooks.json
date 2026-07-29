@@ -1,0 +1,59 @@
+{
+  "description": "Optional Continuity coordination hooks for Codex sessions.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"$(git rev-parse --show-toplevel)/.codex/hooks/continuity.sh\" session-start",
+            "statusMessage": "Loading shared Continuity status",
+            "timeout": 10,
+            "additionalContextLimit": 1800
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"$(git rev-parse --show-toplevel)/.codex/hooks/continuity.sh\" subagent-start",
+            "statusMessage": "Loading shared Continuity status",
+            "timeout": 10,
+            "additionalContextLimit": 1800
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"$(git rev-parse --show-toplevel)/.codex/hooks/continuity.sh\" user-prompt",
+            "statusMessage": "Refreshing shared Continuity status",
+            "timeout": 10,
+            "additionalContextLimit": 700
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "^(Bash|apply_patch|Edit|Write)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"$(git rev-parse --show-toplevel)/.codex/hooks/continuity.sh\" pretool",
+            "statusMessage": "Checking worktree claim",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

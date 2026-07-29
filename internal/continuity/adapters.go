@@ -19,13 +19,15 @@ type InstallReport struct {
 func InstallAdapters(root string) (InstallReport, error) {
 	report := InstallReport{}
 	files := map[string]string{
-		"AGENTS.md":                            agentsTemplate,
-		"CLAUDE.md":                            claudeTemplate,
-		"GEMINI.md":                            geminiTemplate,
-		".github/copilot-instructions.md":      copilotTemplate,
-		".cursor/rules/project-continuity.mdc": cursorTemplate,
-		"opencode.json":                        openCodeTemplate,
-		".agents/skills/project-continuity/SKILL.md":                   skillTemplate,
+		"AGENTS.md":                                  agentsTemplate,
+		"CLAUDE.md":                                  claudeTemplate,
+		"GEMINI.md":                                  geminiTemplate,
+		".github/copilot-instructions.md":            copilotTemplate,
+		".cursor/rules/project-continuity.mdc":       cursorTemplate,
+		".codex/hooks.json":                          codexHooksTemplate,
+		".codex/hooks/continuity.sh":                 codexHookScriptTemplate,
+		"opencode.json":                              openCodeTemplate,
+		".agents/skills/project-continuity/SKILL.md": skillTemplate,
 		".agents/skills/project-continuity/agents/openai.yaml":         skillMetadataTemplate,
 		".agents/skills/project-continuity/references/state-schema.md": skillSchemaTemplate,
 	}
@@ -99,11 +101,11 @@ func (r InstallReport) String() string {
 
 const agentsTemplate = `# Continuity protocol
 
-This repository uses PROJECT_STATE.md as durable shared project state. Treat chat history and harness-specific memory as disposable conveniences, not authority.
+This repository uses a bounded committed project index plus a local live coordination board. Treat chat history and harness-specific memory as disposable conveniences, not authority.
 
-Before non-trivial work, use the project-continuity skill when available, run continuity brief, and read PROJECT_STATE.md. If state is stale or the worktree is dirty, run continuity reconcile and inspect only listed changes plus mapped relevant code. Resume Active Work; otherwise run continuity ready and select only an explicit autonomous task with acceptance criteria.
+Before non-trivial work, use the project-continuity skill when available. Run continuity context and continuity status. If another owner holds this worktree, do not edit, revert, or reinterpret its changes; work read-only, wait, or use a separate Git worktree. Codex child agents are read-only in their parent checkout; give a child writer a separate worktree and claim.
 
-Before editing, run continuity start unless work is already active. Checkpoint material progress or blockers. Before completion, record verification and use continuity finalize, then continuity check.
+Before editing, claim one explicit autonomous task with continuity start and a narrow --scope. One worktree has one writer; claims also reject duplicate tasks and overlapping scopes. Checkpoint material progress or blockers. Commit and finalize with verification evidence, then merge/hand off and use continuity integrate to update PROJECT_STATE.md.
 
 Do not change product intent, approved outcomes, or approval boundaries without user direction. Do not invent product features. Stop for destructive actions, production changes, credentials, external spending, security uncertainty, unresolved product choices, repeated blockers, or unexplained failures.
 `
@@ -133,6 +135,89 @@ alwaysApply: true
 Read and follow AGENTS.md. Treat PROJECT_STATE.md as the durable cross-harness authority and use the project-continuity workflow before starting, resuming, handing off, or completing non-trivial work.
 `
 
+const codexHooksTemplate = `{
+  "description": "Optional Continuity coordination hooks for Codex sessions.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"$(git rev-parse --show-toplevel)/.codex/hooks/continuity.sh\" session-start",
+            "statusMessage": "Loading shared Continuity status",
+            "timeout": 10,
+            "additionalContextLimit": 1800
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"$(git rev-parse --show-toplevel)/.codex/hooks/continuity.sh\" subagent-start",
+            "statusMessage": "Loading shared Continuity status",
+            "timeout": 10,
+            "additionalContextLimit": 1800
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"$(git rev-parse --show-toplevel)/.codex/hooks/continuity.sh\" user-prompt",
+            "statusMessage": "Refreshing shared Continuity status",
+            "timeout": 10,
+            "additionalContextLimit": 700
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "^(Bash|apply_patch|Edit|Write)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"$(git rev-parse --show-toplevel)/.codex/hooks/continuity.sh\" pretool",
+            "statusMessage": "Checking worktree claim",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
+`
+
+const codexHookScriptTemplate = `#!/bin/sh
+set -eu
+
+phase="${1:?hook phase is required}"
+root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+if [ -z "$root" ]; then
+  exit 0
+fi
+
+if command -v continuity >/dev/null 2>&1; then
+  exec continuity codex-hook "$phase" --repo "$root"
+fi
+
+# This fallback makes the source repository self-hosting during development.
+if [ -f "$root/go.mod" ] && [ -d "$root/cmd/continuity" ]; then
+  cd "$root"
+  exec go run ./cmd/continuity codex-hook "$phase" --repo "$root"
+fi
+
+exit 0
+`
+
 const openCodeTemplate = `{
   "$schema": "https://opencode.ai/config.json",
   "instructions": ["AGENTS.md"]
@@ -141,22 +226,22 @@ const openCodeTemplate = `{
 
 const skillTemplate = `---
 name: project-continuity
-description: Resume, perform, checkpoint, or finalize non-trivial engineering work in a repository containing PROJECT_STATE.md. Use at session start, after context loss or compaction, when changing harnesses, before code edits, and before handoff or completion.
+description: Resume, coordinate, perform, checkpoint, finalize, or integrate non-trivial engineering work in a repository containing PROJECT_STATE.md. Use at session start, after context loss or compaction, when another local agent may be active, before code edits, and before handoff or completion.
 ---
 
 # Project continuity
 
-Run continuity brief and read the emitted state. If stale or dirty, run continuity reconcile and inspect only listed changes plus code mapped to active work. Resume Active Work; otherwise run continuity ready and select only an approved autonomous task with acceptance criteria.
+Run continuity context and continuity status. If another owner holds this worktree, do not edit or reinterpret its changes; work read-only, wait, or use a separate worktree. Codex child agents are read-only in their parent checkout; use a separate worktree and claim for a child writer. If state is stale, run continuity reconcile and inspect only listed changes plus mapped code, then sync durable facts.
 
-Before editing, run continuity start unless the task is already active. Honor strict, soft, or exploratory execution mode. Checkpoint material progress, validation, or blockers. Finalize only after recording verification, then run continuity check.
+Before editing, claim an approved autonomous task with continuity start and a narrow --scope. One worktree has one writer; claims reject duplicate tasks and overlapping scopes. Checkpoint material progress, validation, or blockers. Commit, finalize with verification evidence, then merge/hand off and use continuity integrate before declaring the task durable.
 
-Do not replace code inspection with state prose, store raw chats or reasoning, change user-owned product direction, or invent features. Read references/state-schema.md when changing state structure or resolving ownership/freshness questions.
+Do not replace code inspection with state prose, store raw chats or reasoning, change user-owned product direction, or invent features. Read references/state-schema.md when changing state structure or resolving ownership, freshness, or integration questions.
 `
 
 const skillMetadataTemplate = `interface:
   display_name: "Project Continuity"
-  short_description: "Resume work from durable project state"
-  default_prompt: "Use $project-continuity to resume or hand off this repository task."
+  short_description: "Coordinate and resume shared project work"
+  default_prompt: "Use $project-continuity to safely resume, coordinate, or hand off this repository task."
 `
 
 const skillSchemaTemplate = `# State schema
@@ -169,5 +254,5 @@ Use task lines in this exact form:
 
     - [ ] T-001 | Task title | depends: none | autonomous: yes | accepts: Observable completion criteria.
 
-Only autonomous tasks with explicit acceptance criteria can be selected by a fresh agent. Git stores history; PROJECT_STATE.md stores bounded current truth.
+Only autonomous tasks with explicit acceptance criteria can be claimed by a fresh agent. PROJECT_STATE.md stores bounded durable truth; Git's local common directory stores live claims, heartbeats, and completions for same-machine worktrees. Use continuity integrate only after the verified worker commit is present in the integration checkout.
 `

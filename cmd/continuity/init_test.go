@@ -20,6 +20,8 @@ func TestInitCreatesFreshScaffoldedRepository(t *testing.T) {
 		".agents/skills/project-continuity/SKILL.md",
 		".github/copilot-instructions.md",
 		".cursor/rules/project-continuity.mdc",
+		".codex/hooks.json",
+		".codex/hooks/continuity.sh",
 		"opencode.json",
 	} {
 		if _, err := os.Stat(filepath.Join(root, path)); err != nil {

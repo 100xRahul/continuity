@@ -97,3 +97,25 @@ func TestEvidencePathsUsesOnlyDurablePathAnchors(t *testing.T) {
 		t.Fatalf("evidence paths = %q, want %q", got, want)
 	}
 }
+
+func TestStateValidationRejectsDuplicateSections(t *testing.T) {
+	state := NewState("PROJECT_STATE.md", map[string]string{
+		"schema": "1", "fingerprint": "sha256:test", "branch": "main", "head": "unborn", "status": "ready", "active_task": "none", "updated_at": "2026-07-30T00:00:00Z",
+	}, "## Product Intent\n\nfirst\n\n## Product Intent\n\nsecond\n")
+	result := state.Validate(DefaultStateBudget)
+	if result.OK() || !strings.Contains(strings.Join(result.Errors, "\n"), "appears more than once") {
+		t.Fatalf("duplicate section was accepted: %#v", result)
+	}
+}
+
+func TestLoadStateRejectsDuplicateFrontMatter(t *testing.T) {
+	path := filepath.Join(t.TempDir(), StateFilename)
+	contents := "---\nschema: 1\nschema: 1\n---\n\n# Test\n"
+	if err := os.WriteFile(path, []byte(contents), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := LoadState(path)
+	if err == nil || !strings.Contains(err.Error(), "duplicate front matter") {
+		t.Fatalf("duplicate front matter was accepted: %v", err)
+	}
+}

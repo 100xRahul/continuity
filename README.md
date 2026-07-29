@@ -1,82 +1,110 @@
 # Continuity
 
-Continuity is a local, Git-backed project-state system for coding agents. It gives a new session or different harness a compact, current answer to: what this project is, what is active, why key decisions exist, what failed, what must be verified, and what authorized work comes next.
+Continuity is a local, Git-backed project-memory and coordination system for coding agents. It answers two different questions without using cloud memory, embeddings, a vector database, MCP, or saved chat transcripts:
 
-It deliberately does **not** use a cloud service, vector database, embeddings, MCP, or captured chat transcripts. `PROJECT_STATE.md` is the shared project brain; Git is the history and recovery mechanism.
+- What is this project, what has been approved, why does the code look this way, and what is next?
+- Is another local agent already working on this task, worktree, or code area right now?
 
-## Core workflow
+The first answer belongs in a compact committed `PROJECT_STATE.md`. The second belongs in a tiny live coordination store under Git's common directory. Separating them is what makes parallel sessions safe without turning the project index into a bloated scratchpad.
 
-```text
-continuity init --project "My project" --objective "The approved outcome."
-continuity brief
-continuity start
-agent works and verifies
-continuity checkpoint or continuity finalize
-```
+## The rule for multiple sessions
 
-`continuity init` creates `PROJECT_STATE.md` and missing adapters without overwriting any existing instruction, skill, or harness configuration. `continuity brief` is the entry point for every new session. It emits the bounded state and warns when the state is stale. `continuity reconcile` identifies only the committed and uncommitted changes since the last state synchronization, avoiding a broad repository rescan.
+| Situation | Correct practice |
+| --- | --- |
+| Two sessions in one checkout | One writer only. The second session must be read-only, wait, or use another worktree. |
+| Two sessions in separate worktrees on one machine | Claim different approved tasks with non-overlapping scopes. Each worker commits independently. |
+| Codex child agents in one parent session | Treat children as read-only in the parent checkout. A child writer needs a separate worktree and claim. |
+| Same task in two worktrees | The second claim is rejected. |
+| Overlapping files/directories | The second claim is rejected even when task IDs differ. |
+| Separate laptops/clones | This release does not coordinate them; use a remote claim service/branch or keep one writer. |
+
+Claims are small local records containing task ID, session/owner, worktree, scope, heartbeat, next action, and lease. Every linked Git worktree sees the same records because they live under Git's shared metadata directory rather than inside a branch.
 
 ## Install
 
-Build the CLI with Go 1.26 or newer:
+Build with Go 1.26 or newer and put `continuity` on your `PATH`:
 
 ```bash
 go build -o continuity ./cmd/continuity
-./continuity init --project "Example" --objective "Build the approved outcome."
+continuity init --project "Example" --objective "The approved outcome."
 ```
 
-Commit `PROJECT_STATE.md`, `AGENTS.md`, `.agents/skills/`, and the source. Do not commit the compiled `continuity` binary.
+Commit `PROJECT_STATE.md`, `AGENTS.md`, `.agents/skills/`, `.codex/hooks.json`, and the source. Do not commit the compiled binary or Git's local coordination store.
 
-`init` preserves an existing `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, Copilot instruction file, Cursor rule, OpenCode config, or skill directory. Add the short continuity protocol to any preserved user-owned instruction file instead of allowing a tool to overwrite it.
+## Normal workflow
+
+```text
+new session
+  -> continuity context --session <codex-session-id>
+  -> continuity status
+  -> continuity start --id T-001 --session <id> --scope path/to/area ...
+  -> work + continuity checkpoint
+  -> commit + continuity finalize --commit <commit> --evidence 'test: pass'
+  -> merge/handoff worker commit
+  -> continuity integrate --id T-001
+```
+
+`start` claims a task but does not mutate the committed task board. `finalize` records a verified worker result locally. `integrate` is the only operation that marks the task `[x]` in `PROJECT_STATE.md`, and it refuses until the worker commit is present in the integration checkout. This prevents a background worker from falsely declaring shared work complete before its code exists on the branch everyone uses.
+
+## Codex sessions
+
+The repository includes optional Codex hooks:
+
+- `SessionStart` and `SubagentStart` inject a bounded live context packet: active claims, the current worktree owner, relevant project intent, constraints, and the next safe action.
+- `UserPromptSubmit` emits a very small live pulse before a later prompt, so an already-open session notices a newly claimed checkout without repeatedly receiving the full index.
+- `PreToolUse` protects both Codex's `apply_patch` path and potentially mutating Bash commands. A second session may still use a small read-only inspection set, but it cannot write, revert, build into the checkout, or run an arbitrary shell command until it owns the worktree claim.
+
+Trust the project-local hooks once with `/hooks`. Hooks are a convenience and guardrail, not the authority: the portable CLI and claim store remain the source of truth. They cover Codex's documented Bash and patch tool paths, but no hook should be treated as a complete sandbox against manual or external-process writes.
+
+If hooks are unavailable, run `continuity context` and `continuity status` at the start of every session. A fresh session never needs to reconstruct the whole codebase before it knows whether another worker is active.
 
 ## Commands
 
 ```text
-continuity brief                 print the bounded state and freshness status
-continuity check                 validate schema, task graph, fingerprint, and anchors
-continuity reconcile             list only changes requiring state reconciliation
-continuity sync                  refresh state branch, HEAD, fingerprint, and timestamp after commits
-continuity ready                 list unblocked autonomous tasks
-continuity start                 declare one task active with its execution contract
-continuity checkpoint            preserve factual in-progress handoff state
-continuity finalize              close the active task and expose the next one
+continuity brief                  print the full durable project index
+continuity context                print a bounded live session packet
+continuity status                 show active claims and pending completions
+continuity check                  validate durable state, task graph, and freshness
+continuity reconcile              list relevant changes since durable synchronization
+continuity sync                   refresh durable Git facts after reconciliation
+continuity ready                  list unclaimed autonomous ready tasks
+continuity start                  atomically claim a task/worktree/scope
+continuity heartbeat              refresh an owned claim lease
+continuity checkpoint             save factual in-progress claim state
+continuity release                release an owned claim or explicitly recover a stale one
+continuity recover-lock           explicitly recover an abandoned internal mutex
+continuity finalize               record a committed, verified worker result
+continuity integrate              project a merged worker result into PROJECT_STATE.md
 ```
 
-Every task line has one fixed form:
+Tasks use one fixed line format:
 
 ```md
 - [ ] T-014 | Hash password reset tokens | depends: T-013 | autonomous: yes | accepts: Focused tests pass and plaintext tokens are absent from storage.
 ```
 
-`accepts:` is required for autonomous work. A task may be ready only when each dependency is `[x]` and no other task is active.
+Only `autonomous: yes` tasks can be claimed by an agent. Missing scope means `.`—the whole repository—and intentionally prevents parallel work.
 
-## State contract
+## State and freshness
 
-`PROJECT_STATE.md` has a fixed byte budget (24 KiB by default) and records current truth rather than an append-only diary. It contains product intent, approved outcomes, active work, a dependency-aware task queue, decisions, constraints, code map, durable failures, verification, recent material changes, and a handoff.
+`PROJECT_STATE.md` has a 24 KiB default budget. It holds current, load-bearing facts rather than a diary: intent, outcomes, decisions, constraints, code map, durable failures, verification, integrated changes, and handoff.
 
-The source fingerprint excludes state and harness adapters. It changes when source, tests, or project configuration changes; therefore an agent can trust a matching state but must reconcile a mismatch before proceeding.
+The source fingerprint uses Git's tracked and unignored files. It does not hash `.git` worktree metadata, ignored build binaries, generated harness adapters, or the target of an external symlink. A matching fingerprint avoids broad rescans; evidence anchors still tell an agent which small areas need review.
+
+The CLI rejects duplicate front matter or Markdown sections and rejects multiline lifecycle fields, so error text or prompt injection cannot silently create a second `Approved Outcomes` section.
 
 ## Harness support
 
-The portable layer is `PROJECT_STATE.md`, `AGENTS.md`, `.agents/skills/project-continuity`, and the CLI. It works even when no agent has hook support.
+The portable layer is `PROJECT_STATE.md`, `AGENTS.md`, `.agents/skills/project-continuity`, and the CLI. Repository adapters point Codex, Claude Code, Cursor, GitHub Copilot CLI, Gemini CLI, and OpenCode to that same protocol.
 
-Repository adapters are included for Codex, Claude Code, Cursor, GitHub Copilot CLI, Gemini CLI, and OpenCode. They contain no duplicate project memory: each directs the harness back to the same state and workflow.
+The live claim/heartbeat feature currently targets same-machine local Git worktrees. Codex hooks are the first native accelerator because they can automatically inject coordination context and guard Codex write paths; the core CLI itself stays harness-neutral.
 
-| Harness | Adapter |
-| --- | --- |
-| Codex | Root `AGENTS.md` and `.agents/skills/project-continuity/` |
-| Claude Code | `CLAUDE.md` plus `.claude/skills` symlinked to the shared skill |
-| Cursor | Root `AGENTS.md` and `.cursor/rules/project-continuity.mdc` |
-| GitHub Copilot CLI | `AGENTS.md`, `.github/copilot-instructions.md`, and shared skill |
-| Gemini CLI | `GEMINI.md` pointing to the same protocol |
-| OpenCode | `AGENTS.md` and `opencode.json` loading it explicitly |
-
-Native hooks are intentionally optional accelerators because their configuration and trust models differ by harness. Correct continuation must work with only the portable layer.
+Codex documents that child-agent hooks use the parent session ID. That makes a session ID insufficient to safely distinguish two simultaneous child writers in one checkout, so Continuity deliberately treats same-checkout child agents as research/review workers. Use a worktree for every independent writer.
 
 ## Safety model
 
-- Users own product intent, approved outcomes, and approval boundaries.
-- Agents maintain active work, code map, evidence, handoffs, and engineering-level decisions.
-- Agents may execute only explicit, unblocked tasks marked `autonomous: yes`.
-- Agents stop for product ambiguity, destructive or production work, credentials, paid services, security uncertainty, unexplained validation failures, or repeated blockers.
-- Code remains the implementation authority. The state tells an agent where and why to inspect; it never replaces narrow verification of relevant code.
+- Users own product intent, approved outcomes, priorities, and approval boundaries.
+- Agents maintain factual claims, code map, verification, handoffs, decisions, and durable failures.
+- Agents do not invent tasks, features, approval, or completion evidence.
+- Agents stop for destructive or production actions, credentials, paid services, security uncertainty, unresolved product choices, unexplained validation failures, or repeated blockers.
+- Code remains the implementation authority. Durable state points to relevant code; it does not replace targeted inspection or verification.

@@ -52,6 +52,46 @@ func TestReviewAnchorsAndChangedSinceState(t *testing.T) {
 	}
 }
 
+func TestFingerprintUsesGitFilesAndHonorsIgnoreRules(t *testing.T) {
+	root := t.TempDir()
+	if _, err := EnsureGitRepo(root); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "service.go"), []byte("package service\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".gitignore"), []byte("/continuity\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "continuity"), []byte("first binary build"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	before, err := Fingerprint(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "continuity"), []byte("second binary build"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	unchanged, err := Fingerprint(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if before != unchanged {
+		t.Fatal("ignored root binary changed the source fingerprint")
+	}
+	if err := os.WriteFile(filepath.Join(root, "service.go"), []byte("package service\nfunc Run() {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	after, err := Fingerprint(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after == unchanged {
+		t.Fatal("source change did not change Git-aware fingerprint")
+	}
+}
+
 func configureTestGit(t *testing.T, root string) {
 	t.Helper()
 	runTestGit(t, root, "config", "user.name", "Continuity Test")

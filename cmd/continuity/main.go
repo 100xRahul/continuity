@@ -33,12 +33,26 @@ func main() {
 		err = syncCommand(os.Args[2:])
 	case "ready":
 		err = readyCommand(os.Args[2:])
+	case "status":
+		err = statusCommand(os.Args[2:])
+	case "context":
+		err = contextCommand(os.Args[2:])
+	case "heartbeat":
+		err = heartbeatCommand(os.Args[2:])
+	case "release":
+		err = releaseCommand(os.Args[2:])
+	case "recover-lock":
+		err = recoverLockCommand(os.Args[2:])
 	case "start":
 		err = startCommand(os.Args[2:])
 	case "checkpoint":
 		err = checkpointCommand(os.Args[2:])
 	case "finalize":
 		err = finalizeCommand(os.Args[2:])
+	case "integrate":
+		err = integrateCommand(os.Args[2:])
+	case "codex-hook":
+		err = codexHookCommand(os.Args[2:])
 	case "version", "--version", "-v":
 		fmt.Println("continuity", version)
 		return
@@ -65,9 +79,16 @@ Usage:
   continuity reconcile [--repo .]
   continuity sync [--repo .]
   continuity ready [--repo .]
-  continuity start --id T-001 --goal text --acceptance text --next-action text [--mode strict|soft|exploratory] [--scope path,...] [--validation command] [--repo .]
-  continuity checkpoint --summary text --next-action text [--risk text] [--repo .]
-  continuity finalize --summary text [--next-action text] [--repo .]
+  continuity status [--repo .]
+  continuity context [--session codex-session-id] [--limit bytes] [--repo .]
+  continuity heartbeat [--id T-001] --session id [--repo .]
+  continuity release [--id T-001] --session id [--repo .]
+  continuity recover-lock --force [--repo .]
+  continuity start --id T-001 --goal text --acceptance text --next-action text [--session id|--owner id] [--mode strict|soft|exploratory] [--scope path,...] [--validation command] [--repo .]
+  continuity checkpoint [--id T-001] --summary text --next-action text [--risk text] [--session id|--owner id] [--repo .]
+  continuity finalize [--id T-001] --commit revision --summary text --evidence 'command: result; command: result' [--session id|--owner id] [--repo .]
+  continuity integrate --id T-001 [--repo .]
+  continuity codex-hook session-start|subagent-start|pretool
 
 The state file is the portable shared memory. The CLI validates facts; agents and users maintain meaning.`)
 }
@@ -126,7 +147,20 @@ func briefCommand(args []string) error {
 	if fingerprint != state.Meta["fingerprint"] {
 		freshness = "STALE"
 	}
-	fmt.Printf("Continuity brief — state: %s — active task: %s — branch: %s — %s\n\n", state.Meta["status"], state.Meta["active_task"], snapshot.Branch, freshness)
+	claims, err := continuity.ListClaims(root)
+	if err != nil {
+		return err
+	}
+	completions, err := continuity.ListCompletions(root)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("Continuity brief — state: %s — branch: %s — %s — live claims: %d — pending integrations: %d\n\n", state.Meta["status"], snapshot.Branch, freshness, len(claims), len(completions))
+	if claim, err := continuity.FindClaimForWorktree(root); err != nil {
+		return err
+	} else if claim != nil {
+		fmt.Printf("This worktree is claimed by %s for %s (scope: %s).\n\n", claim.Owner, claim.TaskID, strings.Join(claim.Scope, ", "))
+	}
 	if snapshot.Dirty {
 		fmt.Printf("Working tree has changed files: %s\n\n", strings.Join(snapshot.ChangedFiles, ", "))
 	}
@@ -157,7 +191,7 @@ func checkCommand(args []string) error {
 		return err
 	}
 	if fingerprint != state.Meta["fingerprint"] {
-		result.Errorf("source fingerprint is stale; run continuity reconcile, update PROJECT_STATE.md, then checkpoint or finalize")
+		result.Errorf("source fingerprint is stale; run continuity reconcile, update PROJECT_STATE.md, then sync")
 		for _, anchor := range continuity.ReviewAnchors(root, state) {
 			result.Warnf("review-required: evidence anchor %q changed since synchronization", anchor)
 		}
@@ -167,6 +201,30 @@ func checkCommand(args []string) error {
 	}
 	if snapshot.Dirty {
 		result.Warnf("working tree has uncommitted changes: %s", strings.Join(snapshot.ChangedFiles, ", "))
+	}
+	tasks, taskErr := continuity.ParseTasks(state.Section("Ready Queue"))
+	if taskErr == nil {
+		known := map[string]continuity.Task{}
+		for _, task := range tasks {
+			known[task.ID] = task
+		}
+		claims, err := continuity.ListClaims(root)
+		if err != nil {
+			return err
+		}
+		for _, claim := range claims {
+			task, exists := known[claim.TaskID]
+			if !exists {
+				result.Errorf("live claim %s is not in Ready Queue", claim.TaskID)
+				continue
+			}
+			if task.Status == "x" {
+				result.Errorf("live claim %s targets an already integrated task", claim.TaskID)
+			}
+			if claim.Stale(time.Now().UTC()) {
+				result.Warnf("live claim %s owned by %s is stale; inspect it before recovery", claim.TaskID, claim.Owner)
+			}
+		}
 	}
 	for _, warning := range result.Warnings {
 		fmt.Println("WARN", warning)
@@ -222,7 +280,7 @@ func reconcileCommand(args []string) error {
 	if fingerprint == state.Meta["fingerprint"] && !snapshot.Dirty {
 		fmt.Println("No reconciliation is required.")
 	} else {
-		fmt.Println("Reconcile only the listed changes, update the relevant state sections, then run continuity checkpoint or finalize.")
+		fmt.Println("Reconcile only the listed changes, update the relevant durable state sections, then run continuity sync. Live worker progress belongs in a claim checkpoint.")
 	}
 	return nil
 }
@@ -232,17 +290,26 @@ func syncCommand(args []string) error {
 	if err != nil {
 		return err
 	}
-	state, err := loadState(root)
-	if err != nil {
+	branch := ""
+	head := ""
+	if err := continuity.WithCoordinationLock(root, func() error {
+		state, err := loadState(root)
+		if err != nil {
+			return err
+		}
+		if err := synchronize(state, root); err != nil {
+			return err
+		}
+		if err := state.Save(); err != nil {
+			return err
+		}
+		branch = state.Meta["branch"]
+		head = state.Meta["head"]
+		return nil
+	}); err != nil {
 		return err
 	}
-	if err := synchronize(state, root); err != nil {
-		return err
-	}
-	if err := state.Save(); err != nil {
-		return err
-	}
-	fmt.Printf("synchronized %s on branch %s at %s\n", continuity.StateFilename, state.Meta["branch"], state.Meta["head"])
+	fmt.Printf("synchronized %s on branch %s at %s\n", continuity.StateFilename, branch, head)
 	return nil
 }
 
@@ -255,16 +322,34 @@ func readyCommand(args []string) error {
 	if err != nil {
 		return err
 	}
+	if result := state.Validate(continuity.DefaultStateBudget); !result.OK() {
+		return fmt.Errorf("PROJECT_STATE.md is invalid: %s", strings.Join(result.Errors, "; "))
+	}
+	if err := requireFreshState(root, state); err != nil {
+		return err
+	}
 	tasks, err := continuity.ReadyTasks(state.Section("Ready Queue"))
 	if err != nil {
 		return err
 	}
-	if len(tasks) == 0 {
-		fmt.Println("No autonomous ready tasks.")
-		return nil
+	claims, err := continuity.ListClaims(root)
+	if err != nil {
+		return err
 	}
+	claimed := map[string]bool{}
+	for _, claim := range claims {
+		claimed[claim.TaskID] = true
+	}
+	ready := 0
 	for _, task := range tasks {
+		if claimed[task.ID] {
+			continue
+		}
+		ready++
 		fmt.Printf("%s | %s\n", task.ID, task.Title)
+	}
+	if ready == 0 {
+		fmt.Println("No autonomous ready tasks.")
 	}
 	return nil
 }
@@ -280,11 +365,18 @@ func startCommand(args []string) error {
 	mode := flags.String("mode", "strict", "strict, soft, or exploratory")
 	scope := flags.String("scope", "", "comma-separated repository-relative paths")
 	validation := flags.String("validation", "", "preferred validation command")
+	session := flags.String("session", "", "Codex session ID from continuity context")
+	owner := flags.String("owner", "", "stable worker identity")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
-	if *id == "" || *goal == "" || *acceptance == "" || *nextAction == "" {
-		return errors.New("--id, --goal, --acceptance, and --next-action are required")
+	if err := requireSingleLine(map[string]string{
+		"--id":          *id,
+		"--goal":        *goal,
+		"--acceptance":  *acceptance,
+		"--next-action": *nextAction,
+	}); err != nil {
+		return err
 	}
 	if *mode != "strict" && *mode != "soft" && *mode != "exploratory" {
 		return errors.New("--mode must be strict, soft, or exploratory")
@@ -297,8 +389,11 @@ func startCommand(args []string) error {
 	if err != nil {
 		return err
 	}
-	if active := state.Meta["active_task"]; active != "" && active != "none" {
-		return fmt.Errorf("task %s is already active; checkpoint or finalize it first", active)
+	if result := state.Validate(continuity.DefaultStateBudget); !result.OK() {
+		return fmt.Errorf("PROJECT_STATE.md is invalid: %s", strings.Join(result.Errors, "; "))
+	}
+	if err := requireFreshState(root, state); err != nil {
+		return err
 	}
 	tasks, err := continuity.ParseTasks(state.Section("Ready Queue"))
 	if err != nil {
@@ -320,31 +415,38 @@ func startCommand(args []string) error {
 	if selected.Status != " " {
 		return fmt.Errorf("task %s is not queued", *id)
 	}
+	if !selected.Autonomous {
+		return fmt.Errorf("task %s is not autonomous; record explicit user approval before claiming it", *id)
+	}
 	for _, dependency := range selected.DependsOn {
 		if task, exists := byID[dependency]; !exists || task.Status != "x" {
 			return fmt.Errorf("task %s has unfinished dependency %s", *id, dependency)
 		}
 	}
-	queue, err := continuity.UpdateTaskStatus(state.Section("Ready Queue"), *id, ">")
+	claimOwner := strings.TrimSpace(*owner)
+	if claimOwner == "" {
+		claimOwner = ownerForSession(*session)
+	}
+	if claimOwner == "" {
+		claimOwner = defaultOwner()
+	}
+	snapshot := continuity.Snapshot(root)
+	claim, err := continuity.ClaimTask(root, continuity.ClaimRequest{
+		TaskID:     *id,
+		Owner:      claimOwner,
+		Worktree:   root,
+		Branch:     snapshot.Branch,
+		Scope:      parseScope(*scope),
+		Goal:       *goal,
+		Acceptance: *acceptance,
+		Mode:       *mode,
+		NextAction: *nextAction,
+		Validation: *validation,
+	})
 	if err != nil {
 		return err
 	}
-	if err := state.ReplaceSection("Ready Queue", queue); err != nil {
-		return err
-	}
-	active := fmt.Sprintf("Task: %s\nStatus: in_progress\nMode: %s\nGoal: %s\nAcceptance criteria: %s\nImmediate next action: %s\nEdit scope: %s\nValidation: %s", *id, *mode, *goal, *acceptance, *nextAction, emptyAsNone(*scope), emptyAsNone(*validation))
-	if err := state.ReplaceSection("Active Work", active); err != nil {
-		return err
-	}
-	state.SetMeta("active_task", *id)
-	state.SetMeta("status", "working")
-	if err := synchronize(state, root); err != nil {
-		return err
-	}
-	if err := state.Save(); err != nil {
-		return err
-	}
-	fmt.Println("started", *id)
+	fmt.Printf("started %s for %s in %s\n", claim.TaskID, claim.Owner, claim.Worktree)
 	return nil
 }
 
@@ -352,42 +454,42 @@ func checkpointCommand(args []string) error {
 	flags := flag.NewFlagSet("checkpoint", flag.ContinueOnError)
 	flags.SetOutput(os.Stderr)
 	repo := flags.String("repo", ".", "repository path")
+	id := flags.String("id", "", "active task ID; inferred from this worktree when omitted")
 	summary := flags.String("summary", "", "factual progress summary")
 	nextAction := flags.String("next-action", "", "immediate restart action")
 	risk := flags.String("risk", "none", "remaining risk or blocker")
+	session := flags.String("session", "", "Codex session ID from continuity context")
+	owner := flags.String("owner", "", "stable worker identity")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
-	if *summary == "" || *nextAction == "" {
-		return errors.New("--summary and --next-action are required")
+	if err := requireSingleLine(map[string]string{
+		"--summary":     *summary,
+		"--next-action": *nextAction,
+		"--risk":        *risk,
+	}); err != nil {
+		return err
 	}
 	root, err := repoRoot(*repo)
 	if err != nil {
 		return err
 	}
-	state, err := loadState(root)
+	claimOwner := strings.TrimSpace(*owner)
+	if claimOwner == "" {
+		claimOwner = ownerForSession(*session)
+	}
+	claim, err := continuity.CheckpointClaim(root, continuity.CheckpointRequest{
+		TaskID:     *id,
+		Owner:      claimOwner,
+		Worktree:   root,
+		Summary:    *summary,
+		NextAction: *nextAction,
+		Risk:       *risk,
+	})
 	if err != nil {
 		return err
 	}
-	active := state.Meta["active_task"]
-	if active == "" || active == "none" {
-		return errors.New("no active task; use continuity start first")
-	}
-	handoff := fmt.Sprintf("Task: %s\nProgress: %s\nImmediate restart action: %s\nRisk or blocker: %s", active, *summary, *nextAction, emptyAsNone(*risk))
-	if err := state.ReplaceSection("Handoff", handoff); err != nil {
-		return err
-	}
-	activeWork := replaceField(state.Section("Active Work"), "Immediate next action", *nextAction)
-	if err := state.ReplaceSection("Active Work", activeWork); err != nil {
-		return err
-	}
-	if err := synchronize(state, root); err != nil {
-		return err
-	}
-	if err := state.Save(); err != nil {
-		return err
-	}
-	fmt.Println("checkpointed", active)
+	fmt.Println("checkpointed", claim.TaskID)
 	return nil
 }
 
@@ -395,54 +497,46 @@ func finalizeCommand(args []string) error {
 	flags := flag.NewFlagSet("finalize", flag.ContinueOnError)
 	flags.SetOutput(os.Stderr)
 	repo := flags.String("repo", ".", "repository path")
+	id := flags.String("id", "", "active task ID; inferred from this worktree when omitted")
+	commit := flags.String("commit", "", "worker commit containing the completed result")
 	summary := flags.String("summary", "", "completed work summary")
-	nextAction := flags.String("next-action", "Run continuity ready to inspect the next authorized task.", "next restart action")
+	evidence := flags.String("evidence", "", "semicolon-separated validation evidence")
+	session := flags.String("session", "", "Codex session ID from continuity context")
+	owner := flags.String("owner", "", "stable worker identity")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
-	if *summary == "" {
-		return errors.New("--summary is required")
+	if err := requireSingleLine(map[string]string{
+		"--commit":   *commit,
+		"--summary":  *summary,
+		"--evidence": *evidence,
+	}); err != nil {
+		return err
 	}
 	root, err := repoRoot(*repo)
 	if err != nil {
 		return err
 	}
-	state, err := loadState(root)
+	resolvedCommit, err := continuity.ResolveCommit(root, *commit)
+	if err != nil {
+		return fmt.Errorf("resolve commit %s: %w", *commit, err)
+	}
+	claimOwner := strings.TrimSpace(*owner)
+	if claimOwner == "" {
+		claimOwner = ownerForSession(*session)
+	}
+	completion, err := continuity.CompleteClaim(root, continuity.CompletionRequest{
+		TaskID:   *id,
+		Owner:    claimOwner,
+		Worktree: root,
+		Commit:   resolvedCommit,
+		Summary:  *summary,
+		Evidence: parseEvidence(*evidence),
+	})
 	if err != nil {
 		return err
 	}
-	active := state.Meta["active_task"]
-	if active == "" || active == "none" {
-		return errors.New("no active task to finalize")
-	}
-	queue, err := continuity.UpdateTaskStatus(state.Section("Ready Queue"), active, "x")
-	if err != nil {
-		return err
-	}
-	if err := state.ReplaceSection("Ready Queue", queue); err != nil {
-		return err
-	}
-	if err := state.ReplaceSection("Active Work", "Task: none\nStatus: ready\nMode: strict\nGoal: none\nAcceptance criteria: none\nImmediate next action: "+*nextAction+"\nEdit scope: none\nValidation: none"); err != nil {
-		return err
-	}
-	recent := strings.TrimSpace(state.Section("Recent Material Changes"))
-	recent = "- Completed " + active + ": " + *summary + "\n" + recent
-	if err := state.ReplaceSection("Recent Material Changes", recent); err != nil {
-		return err
-	}
-	handoff := fmt.Sprintf("Last completed: %s — %s\nImmediate restart action: %s", active, *summary, *nextAction)
-	if err := state.ReplaceSection("Handoff", handoff); err != nil {
-		return err
-	}
-	state.SetMeta("active_task", "none")
-	state.SetMeta("status", "ready")
-	if err := synchronize(state, root); err != nil {
-		return err
-	}
-	if err := state.Save(); err != nil {
-		return err
-	}
-	fmt.Println("finalized", active)
+	fmt.Printf("finalized %s at %s; merge it, then run continuity integrate --id %s\n", completion.TaskID, completion.Commit, completion.TaskID)
 	return nil
 }
 
@@ -491,6 +585,17 @@ func synchronize(state *continuity.State, root string) error {
 	state.SetMeta("branch", branch)
 	state.SetMeta("head", head)
 	state.SetMeta("updated_at", time.Now().UTC().Format(time.RFC3339))
+	return nil
+}
+
+func requireFreshState(root string, state *continuity.State) error {
+	fingerprint, err := continuity.Fingerprint(root)
+	if err != nil {
+		return err
+	}
+	if fingerprint != state.Meta["fingerprint"] {
+		return errors.New("PROJECT_STATE.md is stale; run continuity reconcile, update the durable facts, then continuity sync before claiming work")
+	}
 	return nil
 }
 
