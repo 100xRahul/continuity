@@ -160,7 +160,7 @@ func TestCodexWriteGuardRequiresMatchingClaim(t *testing.T) {
 	if err := guardCodexWrite(root, "codex:owner"); err != nil {
 		t.Fatalf("matching claim was blocked: %v", err)
 	}
-	context, err := compactContext(root, "codex:other", 3200)
+	context, err := compactContext(root, "codex:other", 3200, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -215,6 +215,29 @@ func TestCodexHookInputExtractsBashCommand(t *testing.T) {
 	}
 }
 
+func TestContextOwnerPrefersHarnessNeutralOwner(t *testing.T) {
+	if got := contextOwnerFor("claude:session-7", "codex-session"); got != "claude:session-7" {
+		t.Fatalf("explicit owner = %q", got)
+	}
+	if got := contextOwnerFor("", "codex-session"); got != "codex:codex-session" {
+		t.Fatalf("Codex session fallback = %q", got)
+	}
+}
+
+func TestContextInputRequiresPositiveBoundedLimit(t *testing.T) {
+	if err := contextCommand([]string{"--limit", "0"}); err == nil || !strings.Contains(err.Error(), "must be positive") {
+		t.Fatalf("zero context limit was accepted: %v", err)
+	}
+	if _, err := parseContextScopes("cmd/continuity, internal/continuity"); err != nil {
+		t.Fatalf("valid context scopes rejected: %v", err)
+	}
+	for _, value := range []string{"cmd/continuity,,internal/continuity", "../outside", "/absolute"} {
+		if _, err := parseContextScopes(value); err == nil {
+			t.Fatalf("invalid context scope %q was accepted", value)
+		}
+	}
+}
+
 func TestLivePulseIdentifiesOwnershipWithoutFullContext(t *testing.T) {
 	root := t.TempDir()
 	if _, err := continuity.EnsureGitRepo(root); err != nil {
@@ -251,6 +274,90 @@ func TestLivePulseIdentifiesOwnershipWithoutFullContext(t *testing.T) {
 	}
 	if !strings.Contains(unknown, "no worker identity") {
 		t.Fatalf("unexpected unknown-owner pulse: %q", unknown)
+	}
+}
+
+func TestCompactContextSelectsOnlyClaimRelevantCapsules(t *testing.T) {
+	root := t.TempDir()
+	if _, err := continuity.EnsureGitRepo(root); err != nil {
+		t.Fatal(err)
+	}
+	fingerprint, err := continuity.Fingerprint(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := continuity.NewTemplate(filepath.Join(root, continuity.StateFilename), "Test", "Test selective context.", continuity.Snapshot(root), fingerprint)
+	if err := state.ReplaceSection("Context Capsules", strings.Join([]string{
+		"### Project-wide orientation",
+		"Paths: .",
+		"Summary: Always relevant.",
+		"Details: Global details.",
+		"",
+		"### State internals",
+		"Paths: internal/continuity",
+		"Summary: State implementation details.",
+		"Details: State-only details.",
+		"",
+		"### CLI internals",
+		"Paths: cmd/continuity",
+		"Summary: CLI implementation details.",
+		"Details: CLI-only details.",
+	}, "\n")); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.Save(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := continuity.ClaimTask(root, continuity.ClaimRequest{TaskID: "T-001", Owner: "codex:owner", Worktree: root, Scope: []string{"internal/continuity"}}); err != nil {
+		t.Fatal(err)
+	}
+	context, err := compactContext(root, "codex:owner", 12_000, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(context, "Context capsule: State internals") || !strings.Contains(context, "Context capsule: Project-wide orientation") {
+		t.Fatalf("claim-relevant capsules missing: %s", context)
+	}
+	if strings.Contains(context, "Context capsule: CLI internals") {
+		t.Fatalf("unrelated capsule leaked into context: %s", context)
+	}
+	requested, err := compactContext(root, "codex:owner", 12_000, []string{"cmd/continuity"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(requested, "Context capsule: CLI internals") || strings.Contains(requested, "Context capsule: State internals") {
+		t.Fatalf("requested scope did not override claim scope: %s", requested)
+	}
+}
+
+func TestCompactContextStaysBoundedForLargeSelectedCapsules(t *testing.T) {
+	root := t.TempDir()
+	if _, err := continuity.EnsureGitRepo(root); err != nil {
+		t.Fatal(err)
+	}
+	fingerprint, err := continuity.Fingerprint(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := continuity.NewTemplate(filepath.Join(root, continuity.StateFilename), "Test", "Test bounded durable context.", continuity.Snapshot(root), fingerprint)
+	if err := state.ReplaceSection("Context Capsules", "### Project-wide orientation\nPaths: .\nSummary: Always relevant.\nDetails: Global details.\n\n### Large state record\nPaths: internal/continuity\nSummary: Relevant but deliberately large.\nDetails: "+strings.Repeat("x", 100_000)); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.Save(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := continuity.ClaimTask(root, continuity.ClaimRequest{TaskID: "T-001", Owner: "codex:owner", Worktree: root, Scope: []string{"internal/continuity"}}); err != nil {
+		t.Fatal(err)
+	}
+	context, err := compactContext(root, "codex:owner", 1_800, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(context) > 1_800 {
+		t.Fatalf("context exceeded limit: %d bytes", len(context))
+	}
+	if !strings.Contains(context, "Context capsule: Large state record") {
+		t.Fatalf("relevant capsule was omitted from bounded context: %s", context)
 	}
 }
 

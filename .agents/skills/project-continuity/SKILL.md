@@ -9,7 +9,7 @@ Use the committed project index for durable meaning and the live local claim boa
 
 ## Resume
 
-1. In Codex, use the SessionStart context when available; otherwise run `continuity context --session <session-id>` and `continuity status`.
+1. Use automatic harness context when available; otherwise run `continuity context --owner <harness:session-id>` and `continuity status`. Codex may use `--session` as a convenience alias.
 2. If another owner holds this worktree, do not edit or reinterpret its changes. Work read-only, wait, or use a separate worktree.
 3. A Codex child agent is read-only in its parent worktree; use a separate worktree and claim for a child writer.
 4. If state is stale, run `continuity reconcile`; inspect only listed changes and mapped code. Update durable facts and run `continuity sync` before claiming a task.
@@ -17,7 +17,7 @@ Use the committed project index for durable meaning and the live local claim boa
 
 ## Execute
 
-Before editing, run `continuity start` with the Codex session ID and a narrow repository-relative `--scope`. One worktree has one writer; claims also reject duplicate tasks and overlapping scopes in separate worktrees.
+Before editing, run `continuity start` with a stable harness owner ID and a narrow repository-relative `--scope`. One worktree has one writer; claims also reject duplicate tasks and overlapping scopes in separate worktrees.
 
 Honor the task contract. Checkpoint material progress, validation, or blockers with `continuity checkpoint`. Do not edit `PROJECT_STATE.md` as a live scratchpad; active progress belongs to the claim record.
 
@@ -25,4 +25,4 @@ Honor the task contract. Checkpoint material progress, validation, or blockers w
 
 Run focused validation, commit the worker result, then finalize with the commit and factual evidence. A completion remains pending until its commit is present in the integration checkout. After merge or handoff, run `continuity integrate --id <task>` to update the durable index and unblock dependencies.
 
-Keep context bounded: use `continuity context` first, then read only the relevant state section and mapped code. Read [state-schema.md](references/state-schema.md) when changing state structure or resolving ownership, freshness, or integration questions.
+Keep context bounded: use `continuity context --scope <task path>` first, then read only the matching Context Capsules, relevant state section, and mapped code. The durable index may hold approximately 30k tokens; routine startup must not load it wholesale. Read [state-schema.md](references/state-schema.md) when changing state structure or resolving ownership, freshness, or integration questions.

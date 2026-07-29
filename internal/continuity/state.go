@@ -11,8 +11,11 @@ import (
 )
 
 const (
-	StateFilename      = "PROJECT_STATE.md"
-	DefaultStateBudget = 24 * 1024
+	StateFilename               = "PROJECT_STATE.md"
+	CurrentStateSchema          = "2"
+	ApproximateStateTokenBudget = 30_000
+	ApproximateBytesPerToken    = 4
+	DefaultStateBudget          = ApproximateStateTokenBudget * ApproximateBytesPerToken
 )
 
 var RequiredSections = []string{
@@ -23,6 +26,7 @@ var RequiredSections = []string{
 	"Active Decisions",
 	"Constraints and Approval Boundaries",
 	"Code Map",
+	"Context Capsules",
 	"Known Pitfalls and Failed Approaches",
 	"Verification",
 	"Recent Material Changes",
@@ -50,6 +54,16 @@ type State struct {
 type Validation struct {
 	Errors   []string
 	Warnings []string
+}
+
+// ContextCapsule is a path-indexed, durable piece of project knowledge. It
+// keeps a larger project index navigable: a session receives only capsules
+// relevant to its claimed or requested scope rather than the entire state.
+type ContextCapsule struct {
+	Name    string
+	Paths   []string
+	Summary string
+	Details string
 }
 
 func (v Validation) OK() bool { return len(v.Errors) == 0 }
@@ -250,8 +264,8 @@ func (s *State) Validate(budget int) Validation {
 			result.Errorf("front matter field %q is required", key)
 		}
 	}
-	if s.Meta["schema"] != "1" {
-		result.Errorf("unsupported schema %q; expected 1", s.Meta["schema"])
+	if s.Meta["schema"] != CurrentStateSchema {
+		result.Errorf("unsupported schema %q; expected %s", s.Meta["schema"], CurrentStateSchema)
 	}
 	switch s.Meta["status"] {
 	case "ready", "working", "blocked":
@@ -268,6 +282,9 @@ func (s *State) Validate(budget int) Validation {
 	}
 	for _, section := range s.DuplicateSections {
 		result.Errorf("section %q appears more than once", section)
+	}
+	if _, err := s.ContextCapsules(); err != nil {
+		result.Errorf("context capsules: %v", err)
 	}
 	if len(s.Render()) > budget {
 		result.Errorf("state is %d bytes; budget is %d bytes", len(s.Render()), budget)
@@ -304,7 +321,7 @@ func (s *State) Validate(budget int) Validation {
 // in backticks in the durable sections where an agent relies on them as evidence.
 // Existence and change detection are deliberately left to the Git layer.
 func (s *State) EvidencePaths() []string {
-	sections := []string{"Active Decisions", "Code Map", "Known Pitfalls and Failed Approaches", "Active Work"}
+	sections := []string{"Active Decisions", "Code Map", "Context Capsules", "Known Pitfalls and Failed Approaches", "Active Work"}
 	seen := map[string]bool{}
 	paths := []string{}
 	for _, section := range sections {
@@ -321,8 +338,190 @@ func (s *State) EvidencePaths() []string {
 			}
 		}
 	}
+	if capsules, err := s.ContextCapsules(); err == nil {
+		for _, capsule := range capsules {
+			for _, path := range capsule.Paths {
+				if path == "." {
+					continue
+				}
+				if !seen[path] {
+					seen[path] = true
+					paths = append(paths, path)
+				}
+			}
+		}
+	}
 	sort.Strings(paths)
 	return paths
+}
+
+// ContextCapsules parses the Context Capsules section. Each capsule has a
+// level-three heading and exactly one Paths and Summary line:
+//
+//	### API boundary
+//	Paths: api, internal/http
+//	Summary: Stable request/response contract.
+//	Details: Load only when changing those paths.
+func (s *State) ContextCapsules() ([]ContextCapsule, error) {
+	content := strings.TrimSpace(s.Section("Context Capsules"))
+	if content == "" {
+		return nil, nil
+	}
+	var capsules []ContextCapsule
+	var current *ContextCapsule
+	var details []string
+	flush := func() error {
+		if current == nil {
+			return nil
+		}
+		if current.Name == "" {
+			return errors.New("capsule heading is empty")
+		}
+		if len(current.Paths) == 0 {
+			return fmt.Errorf("capsule %q is missing Paths", current.Name)
+		}
+		if strings.TrimSpace(current.Summary) == "" {
+			return fmt.Errorf("capsule %q is missing Summary", current.Name)
+		}
+		current.Details = strings.Trim(strings.Join(details, "\n"), "\n")
+		capsules = append(capsules, *current)
+		current = nil
+		details = nil
+		return nil
+	}
+	seen := map[string]bool{}
+	for _, line := range strings.Split(content, "\n") {
+		if strings.HasPrefix(line, "### ") {
+			if err := flush(); err != nil {
+				return nil, err
+			}
+			name := strings.TrimSpace(strings.TrimPrefix(line, "### "))
+			if name == "" {
+				return nil, errors.New("capsule heading is empty")
+			}
+			if seen[name] {
+				return nil, fmt.Errorf("duplicate capsule %q", name)
+			}
+			seen[name] = true
+			current = &ContextCapsule{Name: name}
+			continue
+		}
+		if current == nil {
+			if strings.TrimSpace(line) != "" {
+				return nil, errors.New("capsules must begin with a ### heading")
+			}
+			continue
+		}
+		if strings.HasPrefix(line, "Paths:") {
+			if len(current.Paths) > 0 {
+				return nil, fmt.Errorf("capsule %q has more than one Paths line", current.Name)
+			}
+			paths, err := parseCapsulePaths(strings.TrimSpace(strings.TrimPrefix(line, "Paths:")))
+			if err != nil {
+				return nil, fmt.Errorf("capsule %q paths: %w", current.Name, err)
+			}
+			current.Paths = paths
+			continue
+		}
+		if strings.HasPrefix(line, "Summary:") {
+			if current.Summary != "" {
+				return nil, fmt.Errorf("capsule %q has more than one Summary line", current.Name)
+			}
+			current.Summary = strings.TrimSpace(strings.TrimPrefix(line, "Summary:"))
+			continue
+		}
+		details = append(details, line)
+	}
+	if err := flush(); err != nil {
+		return nil, err
+	}
+	return capsules, nil
+}
+
+func parseCapsulePaths(value string) ([]string, error) {
+	if strings.TrimSpace(value) == "" {
+		return nil, errors.New("Paths must name at least one repository-relative path")
+	}
+	seen := map[string]bool{}
+	paths := []string{}
+	for _, item := range strings.Split(value, ",") {
+		item = strings.Trim(strings.TrimSpace(item), "`")
+		if item == "" || filepath.IsAbs(item) {
+			return nil, fmt.Errorf("invalid path %q", item)
+		}
+		clean := filepath.ToSlash(filepath.Clean(item))
+		if clean == ".." || strings.HasPrefix(clean, "../") {
+			return nil, fmt.Errorf("path %q escapes the repository", item)
+		}
+		if !seen[clean] {
+			seen[clean] = true
+			paths = append(paths, clean)
+		}
+	}
+	sort.Strings(paths)
+	return paths, nil
+}
+
+// SelectContextCapsules ranks capsules by overlap with repository-relative
+// scopes. A project-wide '.' capsule is retained as low-priority orientation;
+// exact and nested path matches come first. With no scope, only project-wide
+// capsules are selected.
+func SelectContextCapsules(capsules []ContextCapsule, scopes []string) []ContextCapsule {
+	type candidate struct {
+		capsule ContextCapsule
+		score   int
+	}
+	candidates := []candidate{}
+	for _, capsule := range capsules {
+		score := 0
+		for _, path := range capsule.Paths {
+			if len(scopes) == 0 {
+				if path == "." {
+					score = max(score, 1)
+				}
+				continue
+			}
+			for _, scope := range scopes {
+				scope = filepath.ToSlash(filepath.Clean(scope))
+				switch {
+				case path == ".":
+					score = max(score, 1)
+				case scope == ".":
+					score = max(score, 2)
+				case path == scope:
+					score = max(score, 4)
+				case strings.HasPrefix(path, scope+"/") || strings.HasPrefix(scope, path+"/"):
+					score = max(score, 3)
+				}
+			}
+		}
+		if score > 0 {
+			candidates = append(candidates, candidate{capsule: capsule, score: score})
+		}
+	}
+	sort.SliceStable(candidates, func(i, j int) bool {
+		if candidates[i].score != candidates[j].score {
+			return candidates[i].score > candidates[j].score
+		}
+		return candidates[i].capsule.Name < candidates[j].capsule.Name
+	})
+	selected := make([]ContextCapsule, 0, len(candidates))
+	for _, candidate := range candidates {
+		selected = append(selected, candidate.capsule)
+	}
+	return selected
+}
+
+func (c ContextCapsule) Render() string {
+	var builder strings.Builder
+	fmt.Fprintf(&builder, "Context capsule: %s\n", c.Name)
+	fmt.Fprintf(&builder, "Paths: %s\n", strings.Join(c.Paths, ","))
+	fmt.Fprintf(&builder, "Summary: %s\n", c.Summary)
+	if strings.TrimSpace(c.Details) != "" {
+		builder.WriteString(c.Details)
+		builder.WriteByte('\n')
+	}
+	return builder.String()
 }
 
 func looksLikePath(value string) bool {
@@ -349,7 +548,7 @@ func NewTemplate(path, project, objective string, snapshot GitSnapshot, fingerpr
 		branch = "unborn"
 	}
 	meta := map[string]string{
-		"schema":      "1",
+		"schema":      CurrentStateSchema,
 		"fingerprint": fingerprint,
 		"branch":      branch,
 		"head":        head,
@@ -395,6 +594,10 @@ Validation: none
 
 - Add subsystem, responsibility, repository-relative entry points, and tests as the project becomes known.
 
+## Context Capsules
+
+%s
+
 ## Known Pitfalls and Failed Approaches
 
 - Record only failures that remain relevant. Include the failed approach, evidence, resolution, and affected paths.
@@ -411,6 +614,11 @@ Validation: none
 
 Last completed: state initialization.
 Immediate restart action: Run %s context and %s status, then claim authorized work in this worktree.
-`, project, objective, project, "continuity", "continuity")
+`, project, objective, defaultContextCapsules, project, "continuity", "continuity")
 	return NewState(path, meta, body)
 }
+
+const defaultContextCapsules = `### Project-wide orientation
+Paths: .
+Summary: Durable context is indexed by repository path so a new session can load only what it needs.
+Details: Add short, factual capsules for subsystems or decisions that need more detail than the root index. Do not paste chat transcripts, reasoning traces, or source code.`

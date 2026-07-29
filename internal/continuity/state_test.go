@@ -98,9 +98,91 @@ func TestEvidencePathsUsesOnlyDurablePathAnchors(t *testing.T) {
 	}
 }
 
+func TestContextCapsulesSelectRelevantScopes(t *testing.T) {
+	state := NewTemplate("PROJECT_STATE.md", "Example", "Test capsule selection.", GitSnapshot{}, "sha256:test")
+	if err := state.ReplaceSection("Context Capsules", strings.Join([]string{
+		"### Project-wide orientation",
+		"Paths: .",
+		"Summary: Applies to every task.",
+		"Details: Global constraints.",
+		"",
+		"### State engine",
+		"Paths: internal/continuity",
+		"Summary: Parsing and durable-index validation.",
+		"Details: Inspect for state changes.",
+		"",
+		"### CLI commands",
+		"Paths: cmd/continuity",
+		"Summary: User-facing lifecycle commands.",
+		"Details: Inspect for CLI changes.",
+	}, "\n")); err != nil {
+		t.Fatal(err)
+	}
+	capsules, err := state.ContextCapsules()
+	if err != nil {
+		t.Fatal(err)
+	}
+	selected := SelectContextCapsules(capsules, []string{"internal/continuity/state.go"})
+	if len(selected) != 2 || selected[0].Name != "State engine" || selected[1].Name != "Project-wide orientation" {
+		t.Fatalf("selected capsules = %#v", selected)
+	}
+	global := SelectContextCapsules(capsules, nil)
+	if len(global) != 1 || global[0].Name != "Project-wide orientation" {
+		t.Fatalf("unscoped capsules = %#v", global)
+	}
+	if result := state.Validate(DefaultStateBudget); !result.OK() {
+		t.Fatalf("valid capsules rejected: %v", result.Errors)
+	}
+}
+
+func TestContextCapsulesRejectMalformedPaths(t *testing.T) {
+	state := NewTemplate("PROJECT_STATE.md", "Example", "Test malformed capsule.", GitSnapshot{}, "sha256:test")
+	if err := state.ReplaceSection("Context Capsules", "### Escaping capsule\nPaths: ../secret\nSummary: Invalid path."); err != nil {
+		t.Fatal(err)
+	}
+	result := state.Validate(DefaultStateBudget)
+	if result.OK() || !strings.Contains(strings.Join(result.Errors, "\n"), "escapes the repository") {
+		t.Fatalf("malformed capsule accepted: %#v", result)
+	}
+}
+
+func TestDefaultStateBudgetApproximatesThirtyThousandTokens(t *testing.T) {
+	if DefaultStateBudget != ApproximateStateTokenBudget*ApproximateBytesPerToken {
+		t.Fatalf("state budget = %d, want %d", DefaultStateBudget, ApproximateStateTokenBudget*ApproximateBytesPerToken)
+	}
+	if ApproximateStateTokenBudget != 30_000 {
+		t.Fatalf("token budget = %d, want 30000", ApproximateStateTokenBudget)
+	}
+}
+
+func TestDefaultStateBudgetSupportsLargeDurableCapsules(t *testing.T) {
+	state := NewTemplate("PROJECT_STATE.md", "Example", "Test durable capacity.", GitSnapshot{}, "sha256:test")
+	if err := state.ReplaceSection("Context Capsules", "### Large architecture record\nPaths: internal\nSummary: A bounded large durable record.\nDetails: "+strings.Repeat("x", 100_000)); err != nil {
+		t.Fatal(err)
+	}
+	if result := state.Validate(DefaultStateBudget); !result.OK() {
+		t.Fatalf("large in-budget capsule rejected: %v", result.Errors)
+	}
+	if err := state.ReplaceSection("Context Capsules", "### Too large\nPaths: internal\nSummary: Exceeds the durable budget.\nDetails: "+strings.Repeat("x", DefaultStateBudget)); err != nil {
+		t.Fatal(err)
+	}
+	if result := state.Validate(DefaultStateBudget); result.OK() {
+		t.Fatal("over-budget capsule was accepted")
+	}
+}
+
+func TestStateValidationRequiresCurrentSchema(t *testing.T) {
+	state := NewTemplate("PROJECT_STATE.md", "Example", "Test current schema.", GitSnapshot{}, "sha256:test")
+	state.SetMeta("schema", "1")
+	result := state.Validate(DefaultStateBudget)
+	if result.OK() || !strings.Contains(strings.Join(result.Errors, "\n"), "expected "+CurrentStateSchema) {
+		t.Fatalf("unsupported schema was accepted: %#v", result)
+	}
+}
+
 func TestStateValidationRejectsDuplicateSections(t *testing.T) {
 	state := NewState("PROJECT_STATE.md", map[string]string{
-		"schema": "1", "fingerprint": "sha256:test", "branch": "main", "head": "unborn", "status": "ready", "active_task": "none", "updated_at": "2026-07-30T00:00:00Z",
+		"schema": CurrentStateSchema, "fingerprint": "sha256:test", "branch": "main", "head": "unborn", "status": "ready", "active_task": "none", "updated_at": "2026-07-30T00:00:00Z",
 	}, "## Product Intent\n\nfirst\n\n## Product Intent\n\nsecond\n")
 	result := state.Validate(DefaultStateBudget)
 	if result.OK() || !strings.Contains(strings.Join(result.Errors, "\n"), "appears more than once") {

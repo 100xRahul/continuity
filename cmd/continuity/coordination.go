@@ -151,16 +151,26 @@ func contextCommand(args []string) error {
 	flags := flag.NewFlagSet("context", flag.ContinueOnError)
 	flags.SetOutput(os.Stderr)
 	repo := flags.String("repo", ".", "repository path")
-	session := flags.String("session", "", "Codex session ID")
+	session := flags.String("session", "", "Codex session ID (adapter convenience)")
+	owner := flags.String("owner", "", "stable harness-neutral worker identity")
+	scope := flags.String("scope", "", "comma-separated repository paths whose durable capsules should be selected")
 	limit := flags.Int("limit", 3200, "maximum context bytes")
 	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	if *limit <= 0 {
+		return errors.New("--limit must be positive")
+	}
+	requestedScopes, err := parseContextScopes(*scope)
+	if err != nil {
 		return err
 	}
 	root, err := repoRoot(*repo)
 	if err != nil {
 		return err
 	}
-	context, err := compactContext(root, ownerForSession(*session), *limit)
+	contextOwner := contextOwnerFor(*owner, *session)
+	context, err := compactContext(root, contextOwner, *limit, requestedScopes)
 	if err != nil {
 		return err
 	}
@@ -168,7 +178,10 @@ func contextCommand(args []string) error {
 	return nil
 }
 
-func compactContext(root, owner string, limit int) (string, error) {
+func compactContext(root, owner string, limit int, requestedScopes []string) (string, error) {
+	if limit <= 0 {
+		return "", errors.New("context limit must be positive")
+	}
 	state, err := loadState(root)
 	if err != nil {
 		return "", err
@@ -246,6 +259,20 @@ func compactContext(root, owner string, limit int) (string, error) {
 	builder.WriteString(singleLineSnippet(state.Section("Product Intent"), 420))
 	builder.WriteString("\nConstraints: ")
 	builder.WriteString(singleLineSnippet(state.Section("Constraints and Approval Boundaries"), 700))
+	selectionScopes := requestedScopes
+	if len(selectionScopes) == 0 && current != nil {
+		selectionScopes = current.Scope
+	}
+	capsules, capsuleErr := state.ContextCapsules()
+	if capsuleErr != nil {
+		return "", fmt.Errorf("read Context Capsules: %w", capsuleErr)
+	}
+	if selected := continuity.SelectContextCapsules(capsules, selectionScopes); len(selected) > 0 {
+		builder.WriteString("\nSelected durable context capsules:\n")
+		for _, capsule := range selected {
+			builder.WriteString(capsule.Render())
+		}
+	}
 	builder.WriteString("\nUse the durable state for decisions; use the live claim board for concurrent ownership.\n")
 	return boundText(builder.String(), limit), nil
 }
@@ -447,7 +474,7 @@ func codexHookCommand(args []string) error {
 	switch phase {
 	case "session-start", "subagent-start":
 		heartbeatOwnLiveClaim(root, owner)
-		context, contextErr := compactContext(root, owner, 1800)
+		context, contextErr := compactContext(root, owner, 1800, nil)
 		if contextErr != nil {
 			context = "Continuity state could not be loaded: " + contextErr.Error()
 		}
@@ -625,6 +652,13 @@ func ownerForSession(session string) string {
 	return "codex:" + session
 }
 
+func contextOwnerFor(owner, session string) string {
+	if owner = strings.TrimSpace(owner); owner != "" {
+		return owner
+	}
+	return ownerForSession(session)
+}
+
 func defaultOwner() string {
 	host, err := os.Hostname()
 	if err != nil || host == "" {
@@ -638,6 +672,32 @@ func parseScope(value string) []string {
 		return nil
 	}
 	return strings.Split(value, ",")
+}
+
+func parseContextScopes(value string) ([]string, error) {
+	if strings.TrimSpace(value) == "" {
+		return nil, nil
+	}
+	seen := map[string]bool{}
+	scopes := []string{}
+	for _, item := range strings.Split(value, ",") {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			return nil, errors.New("context scope cannot be empty")
+		}
+		if filepath.IsAbs(item) {
+			return nil, fmt.Errorf("context scope %q must be repository-relative", item)
+		}
+		clean := filepath.ToSlash(filepath.Clean(item))
+		if clean == ".." || strings.HasPrefix(clean, "../") {
+			return nil, fmt.Errorf("context scope %q escapes the repository", item)
+		}
+		if !seen[clean] {
+			seen[clean] = true
+			scopes = append(scopes, clean)
+		}
+	}
+	return scopes, nil
 }
 
 func parseEvidence(value string) []string {

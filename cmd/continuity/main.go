@@ -80,7 +80,7 @@ Usage:
   continuity sync [--repo .]
   continuity ready [--repo .]
   continuity status [--repo .]
-  continuity context [--session codex-session-id] [--limit bytes] [--repo .]
+  continuity context [--session codex-session-id|--owner harness:id] [--scope path,...] [--limit bytes] [--repo .]
   continuity heartbeat [--id T-001] --session id [--repo .]
   continuity release [--id T-001] --session id [--repo .]
   continuity recover-lock --force [--repo .]

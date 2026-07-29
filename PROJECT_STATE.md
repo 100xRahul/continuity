@@ -1,11 +1,11 @@
 ---
-schema: 1
-fingerprint: sha256:2d5365dfa715dcef10f2974037a039ae68ffe71b245b43c3ee9a84d1083673fd
+schema: 2
+fingerprint: sha256:54343f4a7ccea7099af783ecb6bc1f44f65434235cf2443dc21f1ce9d23b6095
 branch: main
-head: 667498ef75cbec10d4a2caeb99b0f6d722f2cc82
+head: e96fce009cacf7343f0789790b40e2d36c97fc84
 status: ready
 active_task: none
-updated_at: 2026-07-29T19:53:52Z
+updated_at: 2026-07-29T20:19:06Z
 ---
 
 # Continuity
@@ -20,6 +20,7 @@ Build a durable, cross-harness continuity system for AI coding agents.
 - Deliver one shared continuity protocol and skill with adapters for Codex, Claude Code, Cursor, GitHub Copilot CLI, Gemini CLI, and OpenCode.
 - Prove recovery from fresh sessions, stale state, changed source, and task dependencies through automated tests and real CLI checks.
 - Deliver safe same-machine multi-session coordination: agents must see live task claims before editing, and separate worktrees must not duplicate or silently conflict on work.
+- Scale durable project knowledge to an approximately 30,000-token budget while keeping routine session context selective and compact.
 
 ## Active Work
 Task: none
@@ -37,6 +38,7 @@ Validation: none
 - [x] T-004 | Complete installation workflow, fresh-repository scaffolding, and documentation | depends: T-003 | autonomous: yes | accepts: Init scaffolds missing shared adapters without overwriting instructions, and README explains install, workflow, safety model, and adapter boundaries.
 - [x] T-005 | Add post-commit metadata synchronization | depends: T-004 | autonomous: yes | accepts: A sync command records the current Git branch, HEAD, fingerprint, and timestamp without altering task state.
 - [x] T-006 | Build safe multi-session coordination | depends: T-005 | autonomous: yes | accepts: Concurrent local sessions receive a bounded shared status signal, claims are exclusive across worktrees, unsafe same-worktree writes are rejected, and adversarial tests cover races and state integrity.
+- [ ] T-007 | Add layered 30k-token durable context | depends: T-006 | autonomous: yes | accepts: The portable core supports an approximately 30k-token durable budget, indexed context capsules, bounded scope-based selection, and tests proving startup context stays selective.
 ## Active Decisions
 
 - D-001 — Keep committed durable project knowledge in `PROJECT_STATE.md`; Git is the archive. Keep short-lived same-machine ownership outside that file. Why: a bounded current projection avoids both vendor lock-in and transcript bloat without turning progress pings into merge conflicts. Evidence: `internal/continuity/state.go`, `internal/continuity/coordination.go`.
@@ -46,6 +48,7 @@ Validation: none
 - D-005 — Store live claims, leases, and pending completions under Git's common directory. Why: linked local worktrees share this local board without committing ephemeral progress or creating branch conflicts. Evidence: `internal/continuity/coordination.go`.
 - D-006 — One checkout has one writer; parallel writers require separate worktrees, approved tasks, and non-overlapping scopes. Why: independent agents cannot safely infer whether apparent unrelated changes share hidden assumptions. Evidence: `cmd/continuity/coordination.go`, `AGENTS.md`.
 - D-007 — Codex hooks preload bounded context, emit a small live pulse on later prompts, and guard documented Bash and patch paths; child agents remain read-only in their parent checkout. Why: this surfaces live ownership without repeated full-state stuffing, while Codex child hooks inherit the parent session ID and cannot safely distinguish simultaneous child writers. Evidence: `.codex/hooks.json`, `cmd/continuity/coordination.go`.
+- D-008 — Permit approximately 30,000 tokens of durable project knowledge, but select context through path-indexed capsules. Why: larger projects need richer accumulated facts, while routine session startup must remain small and relevant. Evidence: `internal/continuity/state.go`, `cmd/continuity/coordination.go`.
 
 ## Constraints and Approval Boundaries
 
@@ -58,13 +61,25 @@ Validation: none
 
 - CLI command routing — `cmd/continuity/main.go` — parses lifecycle commands and coordinates state/Git facts.
 - Live coordination commands — `cmd/continuity/coordination.go` — bounded context packets, claims, lifecycle integration, and Codex hook output.
-- State engine — `internal/continuity/state.go` — Markdown front matter, sections, validation, templates, and atomic writes.
+- State engine — `internal/continuity/state.go` — Markdown front matter, sections, approximately 30k-token validation, path-indexed Context Capsules, templates, and atomic writes.
 - Git facts — `internal/continuity/git.go` — repository snapshots, source fingerprints, and incremental reconciliation.
 - Coordination store — `internal/continuity/coordination.go` — common-Git-directory claims, heartbeats, scope exclusion, pending completions, and explicit stale recovery.
 - Task graph — `internal/continuity/tasks.go` — task syntax, dependencies, readiness, and cycle detection.
 - Adapter installer — `internal/continuity/adapters.go` — non-overwriting protocol, skill, and harness adapter scaffolding for new repositories.
 - Codex adapter — `.codex/hooks.json`, `.codex/hooks/continuity.sh` — optional session context and pre-write guardrails after project trust.
 - Tests — `internal/continuity/*_test.go` — state round trip, fingerprint exclusions, task readiness, and cycles.
+
+## Context Capsules
+
+### Project-wide orientation
+Paths: .
+Summary: Continuity stores durable project meaning in a larger bounded index but starts new work from a small, selective context packet.
+Details: Read the project-wide orientation on every new session. Use a task's scope or `continuity context --scope path/to/area` to load deeper capsules instead of reading the entire durable index.
+
+### Continuity architecture
+Paths: cmd/continuity, internal/continuity, AGENTS.md, README.md, .agents/skills, .codex
+Summary: The portable core separates committed project knowledge from local live coordination; harness adapters may inject bounded context but never own the durable state.
+Details: Use this capsule when changing state, task lifecycle, context selection, claims, adapters, or repository instructions. Keep project-wide facts in the durable index and place larger subsystem-specific facts in a capsule with explicit paths.
 
 ## Known Pitfalls and Failed Approaches
 
@@ -75,6 +90,7 @@ Validation: none
 - Do not walk linked-worktree `.git` metadata when fingerprinting. Its pointer file contains worktree-specific paths and creates false staleness; derive files through `git ls-files` instead. Evidence: `internal/continuity/git.go`, `internal/continuity/coordination_test.go`.
 - Do not place unchecked multiline lifecycle text in Markdown state. It can forge a second heading or queue entry; claims, checkpoints, and completions accept only one-line fields. Evidence: `cmd/continuity/main.go`, `internal/continuity/coordination.go`.
 - Do not let multiple Codex child agents write one parent checkout. They share the parent's hook session ID; use separate worktrees for independent writers. Evidence: `AGENTS.md`, `.codex/hooks.json`.
+- Do not equate the approximately 30k-token durable budget with routine context size. The full index is deliberate-review material; startup and task context must select only project-wide and scope-relevant capsules. Evidence: `cmd/continuity/coordination.go`, `AGENTS.md`.
 
 ## Verification
 - go vet ./... and git diff --check: pass
@@ -96,4 +112,4 @@ Validation: none
 - Added adapter scaffolding to `continuity init` with preservation checks for existing instructions.
 ## Handoff
 Last completed: T-006 — Implemented bounded same-machine multi-session coordination with exclusive claims, safe lifecycle integration, prompt pulses, and Codex write guards.
-Immediate restart action: Run continuity context and continuity status. No autonomous work remains; record and approve the next outcome before claiming new work.
+Immediate restart action: T-007 is user-approved. Claim it to scale the durable context budget and add scope-selected context capsules without increasing routine startup context.

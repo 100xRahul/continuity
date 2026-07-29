@@ -5,7 +5,7 @@
 Required front matter:
 
 ```yaml
-schema: 1
+schema: 2
 fingerprint: sha256:...
 branch: main
 head: <observed base commit or unborn>
@@ -14,7 +14,22 @@ active_task: T-001|none
 updated_at: RFC3339 timestamp
 ```
 
-Required sections are Product Intent, Approved Outcomes, Active Work, Ready Queue, Active Decisions, Constraints and Approval Boundaries, Code Map, Known Pitfalls and Failed Approaches, Verification, Recent Material Changes, and Handoff. Headings and front-matter keys must be unique.
+Required sections are Product Intent, Approved Outcomes, Active Work, Ready Queue, Active Decisions, Constraints and Approval Boundaries, Code Map, Context Capsules, Known Pitfalls and Failed Approaches, Verification, Recent Material Changes, and Handoff. Headings and front-matter keys must be unique.
+
+The default durable budget is 120,000 bytes, approximately 30,000 tokens under a four-bytes-per-token estimate. It is a storage ceiling, not routine prompt size.
+
+## Context capsules
+
+Use level-three headings inside `Context Capsules`:
+
+```md
+### Module name
+Paths: path/to/module, other/relevant/path
+Summary: One-line fact needed to decide relevance.
+Details: Compact durable details, invariants, decisions, and references for this scope.
+```
+
+Paths must be repository-relative. `Paths: .` is project-wide orientation. `continuity context --scope path/to/module` selects matching capsules; an active claim's scope is selected automatically. Do not use capsules for raw chats, reasoning traces, or pasted source code.
 
 ## Task queue syntax
 

@@ -103,7 +103,7 @@ const agentsTemplate = `# Continuity protocol
 
 This repository uses a bounded committed project index plus a local live coordination board. Treat chat history and harness-specific memory as disposable conveniences, not authority.
 
-Before non-trivial work, use the project-continuity skill when available. Run continuity context and continuity status. If another owner holds this worktree, do not edit, revert, or reinterpret its changes; work read-only, wait, or use a separate Git worktree. Codex child agents are read-only in their parent checkout; give a child writer a separate worktree and claim.
+Before non-trivial work, use the project-continuity skill when available. Run continuity context --owner <harness:session-id> and continuity status; Codex may use --session as a convenience alias. Use an active claim's scope or --scope path/to/area to load only relevant Context Capsules. If another owner holds this worktree, do not edit, revert, or reinterpret its changes; work read-only, wait, or use a separate Git worktree. Codex child agents are read-only in their parent checkout; give a child writer a separate worktree and claim.
 
 Before editing, claim one explicit autonomous task with continuity start and a narrow --scope. One worktree has one writer; claims also reject duplicate tasks and overlapping scopes. Checkpoint material progress or blockers. Commit and finalize with verification evidence, then merge/hand off and use continuity integrate to update PROJECT_STATE.md.
 
@@ -231,7 +231,7 @@ description: Resume, coordinate, perform, checkpoint, finalize, or integrate non
 
 # Project continuity
 
-Run continuity context and continuity status. If another owner holds this worktree, do not edit or reinterpret its changes; work read-only, wait, or use a separate worktree. Codex child agents are read-only in their parent checkout; use a separate worktree and claim for a child writer. If state is stale, run continuity reconcile and inspect only listed changes plus mapped code, then sync durable facts.
+Run continuity context --owner <harness:session-id> and continuity status; Codex may use --session as a convenience alias. Use --scope to select only relevant Context Capsules from the approximately 30k-token durable index. If another owner holds this worktree, do not edit or reinterpret its changes; work read-only, wait, or use a separate worktree. Codex child agents are read-only in their parent checkout; use a separate worktree and claim for a child writer. If state is stale, run continuity reconcile and inspect only listed changes plus mapped code, then sync durable facts.
 
 Before editing, claim an approved autonomous task with continuity start and a narrow --scope. One worktree has one writer; claims reject duplicate tasks and overlapping scopes. Checkpoint material progress, validation, or blockers. Commit, finalize with verification evidence, then merge/hand off and use continuity integrate before declaring the task durable.
 
@@ -248,11 +248,11 @@ const skillSchemaTemplate = `# State schema
 
 Required front matter: schema, fingerprint, branch, head, status, active_task, and updated_at.
 
-Required sections: Product Intent, Approved Outcomes, Active Work, Ready Queue, Active Decisions, Constraints and Approval Boundaries, Code Map, Known Pitfalls and Failed Approaches, Verification, Recent Material Changes, and Handoff.
+Required sections: Product Intent, Approved Outcomes, Active Work, Ready Queue, Active Decisions, Constraints and Approval Boundaries, Code Map, Context Capsules, Known Pitfalls and Failed Approaches, Verification, Recent Material Changes, and Handoff.
 
 Use task lines in this exact form:
 
     - [ ] T-001 | Task title | depends: none | autonomous: yes | accepts: Observable completion criteria.
 
-Only autonomous tasks with explicit acceptance criteria can be claimed by a fresh agent. PROJECT_STATE.md stores bounded durable truth; Git's local common directory stores live claims, heartbeats, and completions for same-machine worktrees. Use continuity integrate only after the verified worker commit is present in the integration checkout.
+Only autonomous tasks with explicit acceptance criteria can be claimed by a fresh agent. PROJECT_STATE.md stores approximately 30k tokens of bounded durable truth; Context Capsules keep that knowledge path-indexed and continuity context --scope keeps routine prompts selective. Git's local common directory stores live claims, heartbeats, and completions for same-machine worktrees. Use continuity integrate only after the verified worker commit is present in the integration checkout.
 `

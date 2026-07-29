@@ -35,9 +35,9 @@ Commit `PROJECT_STATE.md`, `AGENTS.md`, `.agents/skills/`, `.codex/hooks.json`, 
 
 ```text
 new session
-  -> continuity context --session <codex-session-id>
+  -> continuity context --owner <harness:session-id>
   -> continuity status
-  -> continuity start --id T-001 --session <id> --scope path/to/area ...
+  -> continuity start --id T-001 --owner <harness:session-id> --scope path/to/area ...
   -> work + continuity checkpoint
   -> commit + continuity finalize --commit <commit> --evidence 'test: pass'
   -> merge/handoff worker commit
@@ -62,7 +62,7 @@ If hooks are unavailable, run `continuity context` and `continuity status` at th
 
 ```text
 continuity brief                  print the full durable project index
-continuity context                print a bounded live session packet
+continuity context                print bounded live context; use --scope for relevant capsules
 continuity status                 show active claims and pending completions
 continuity check                  validate durable state, task graph, and freshness
 continuity reconcile              list relevant changes since durable synchronization
@@ -87,7 +87,20 @@ Only `autonomous: yes` tasks can be claimed by an agent. Missing scope means `.`
 
 ## State and freshness
 
-`PROJECT_STATE.md` has a 24 KiB default budget. It holds current, load-bearing facts rather than a diary: intent, outcomes, decisions, constraints, code map, durable failures, verification, integrated changes, and handoff.
+`PROJECT_STATE.md` has a default 120,000-byte budget: approximately 30,000 tokens using a deliberately conservative four-bytes-per-token estimate. This is a durable-storage budget, not an instruction to inject the entire file into every session. It holds current, load-bearing facts rather than a diary: intent, outcomes, decisions, constraints, code map, durable failures, verification, integrated changes, handoff, and indexed context capsules.
+
+### Layered context, not 30k-token startup prompts
+
+Use `Context Capsules` inside the state for richer, path-scoped durable knowledge:
+
+```md
+### Authentication boundary
+Paths: api/auth, internal/auth
+Summary: Token rotation and session invalidation contract.
+Details: Load this only for authentication work; keep the precise invariants and links here.
+```
+
+`continuity context --scope internal/auth --limit 12000` selects the matching capsule plus project-wide orientation. When a worker has a live claim, its claim scope is selected automatically. An ordinary startup packet remains small; use a larger `--limit` only when the task needs deeper durable context. `continuity brief` intentionally prints the whole index and should be used for deliberate review, not routine startup.
 
 The source fingerprint uses Git's tracked and unignored files. It does not hash `.git` worktree metadata, ignored build binaries, generated harness adapters, or the target of an external symlink. A matching fingerprint avoids broad rescans; evidence anchors still tell an agent which small areas need review.
 
@@ -95,7 +108,7 @@ The CLI rejects duplicate front matter or Markdown sections and rejects multilin
 
 ## Harness support
 
-The portable layer is `PROJECT_STATE.md`, `AGENTS.md`, `.agents/skills/project-continuity`, and the CLI. Repository adapters point Codex, Claude Code, Cursor, GitHub Copilot CLI, Gemini CLI, and OpenCode to that same protocol.
+The portable layer is `PROJECT_STATE.md`, `AGENTS.md`, `.agents/skills/project-continuity`, and the CLI. Repository adapters point Codex, Claude Code, Cursor, GitHub Copilot CLI, Gemini CLI, and OpenCode to that same protocol. Use `--owner harness:session-id` with the CLI outside Codex; `--session` is only a Codex convenience alias.
 
 The live claim/heartbeat feature currently targets same-machine local Git worktrees. Codex hooks are the first native accelerator because they can automatically inject coordination context and guard Codex write paths; the core CLI itself stays harness-neutral.
 
