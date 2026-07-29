@@ -2,10 +2,10 @@
 schema: 2
 fingerprint: sha256:54343f4a7ccea7099af783ecb6bc1f44f65434235cf2443dc21f1ce9d23b6095
 branch: main
-head: e96fce009cacf7343f0789790b40e2d36c97fc84
+head: 259d2a238a309e2a08f64a39a929ad600f554339
 status: ready
 active_task: none
-updated_at: 2026-07-29T20:19:06Z
+updated_at: 2026-07-29T20:19:47Z
 ---
 
 # Continuity
@@ -38,7 +38,7 @@ Validation: none
 - [x] T-004 | Complete installation workflow, fresh-repository scaffolding, and documentation | depends: T-003 | autonomous: yes | accepts: Init scaffolds missing shared adapters without overwriting instructions, and README explains install, workflow, safety model, and adapter boundaries.
 - [x] T-005 | Add post-commit metadata synchronization | depends: T-004 | autonomous: yes | accepts: A sync command records the current Git branch, HEAD, fingerprint, and timestamp without altering task state.
 - [x] T-006 | Build safe multi-session coordination | depends: T-005 | autonomous: yes | accepts: Concurrent local sessions receive a bounded shared status signal, claims are exclusive across worktrees, unsafe same-worktree writes are rejected, and adversarial tests cover races and state integrity.
-- [ ] T-007 | Add layered 30k-token durable context | depends: T-006 | autonomous: yes | accepts: The portable core supports an approximately 30k-token durable budget, indexed context capsules, bounded scope-based selection, and tests proving startup context stays selective.
+- [x] T-007 | Add layered 30k-token durable context | depends: T-006 | autonomous: yes | accepts: The portable core supports an approximately 30k-token durable budget, indexed context capsules, bounded scope-based selection, and tests proving startup context stays selective.
 ## Active Decisions
 
 - D-001 — Keep committed durable project knowledge in `PROJECT_STATE.md`; Git is the archive. Keep short-lived same-machine ownership outside that file. Why: a bounded current projection avoids both vendor lock-in and transcript bloat without turning progress pings into merge conflicts. Evidence: `internal/continuity/state.go`, `internal/continuity/coordination.go`.
@@ -93,14 +93,15 @@ Details: Use this capsule when changing state, task lifecycle, context selection
 - Do not equate the approximately 30k-token durable budget with routine context size. The full index is deliberate-review material; startup and task context must select only project-wide and scope-relevant capsules. Evidence: `cmd/continuity/coordination.go`, `AGENTS.md`.
 
 ## Verification
-- go vet ./... and git diff --check: pass
-- go test -race ./... -count=1: pass
-- go test ./... -count=1: pass
+- `go test ./... -count=1`, `go test -race ./... -count=1`, `go vet ./...`, and `git diff --check` — pass.
+- Focused capsule selection, malformed scope/budget, and large-capsule bounded-packet tests — pass.
+- Fresh `continuity init`, schema-2 validation, scoped context, and obsolete-command smoke test — pass.
 - `sh -n .codex/hooks/continuity.sh` and Ruby JSON parsing of `.codex/hooks.json` — pass.
 - Simulated Codex `SessionStart`, `SubagentStart`, user-prompt pulse, Bash, and `apply_patch` hook inputs — pass; non-owner writes are denied and read-only inspection remains available.
 - Fresh temporary-repository `continuity init` followed by `continuity check` — pass.
 - `continuity sync` preserves active task state while refreshing Git metadata — pass.
 ## Recent Material Changes
+- Integrated T-007 at 259d2a238a309e2a08f64a39a929ad600f554339: Added schema-2 30k-token durable capsules with selective bounded context and no migration path.
 - Integrated T-006 at 667498ef75cbec10d4a2caeb99b0f6d722f2cc82: Implemented bounded same-machine multi-session coordination with exclusive claims, safe lifecycle integration, and Codex live-context hooks.
 - Completed T-005: Added and verified post-commit metadata synchronization; the command refreshes branch, HEAD, fingerprint, and timestamp without altering task state.
 - Completed T-004: Completed fresh-repository scaffolding, installation and cross-harness documentation, durable failure notes, and final release validation including unit, race, vet, skill, CLI, and fresh-init checks.
@@ -111,5 +112,5 @@ Details: Use this capsule when changing state, task lifecycle, context selection
 - Added initial portable state engine, task graph, and unit tests.
 - Added adapter scaffolding to `continuity init` with preservation checks for existing instructions.
 ## Handoff
-Last completed: T-006 — Implemented bounded same-machine multi-session coordination with exclusive claims, safe lifecycle integration, prompt pulses, and Codex write guards.
-Immediate restart action: T-007 is user-approved. Claim it to scale the durable context budget and add scope-selected context capsules without increasing routine startup context.
+Last completed: T-007 — Added a schema-2, approximately 30k-token durable index with path-indexed capsules and bounded scope-selected context packets.
+Immediate restart action: Run continuity context and continuity status. No autonomous work remains; record and approve the next outcome before claiming new work.
