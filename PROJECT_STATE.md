@@ -2,10 +2,10 @@
 schema: 1
 fingerprint: sha256:2d5365dfa715dcef10f2974037a039ae68ffe71b245b43c3ee9a84d1083673fd
 branch: main
-head: 809b02df1a5edaba20bcf6424e71799f1567aa90
+head: 667498ef75cbec10d4a2caeb99b0f6d722f2cc82
 status: ready
 active_task: none
-updated_at: 2026-07-29T19:52:37Z
+updated_at: 2026-07-29T19:53:52Z
 ---
 
 # Continuity
@@ -36,7 +36,7 @@ Validation: none
 - [x] T-003 | Verify state recovery, freshness, and task-graph behavior | depends: T-002 | autonomous: yes | accepts: Unit and command-level checks prove stale-state detection, recovery guidance, and task dependency behavior.
 - [x] T-004 | Complete installation workflow, fresh-repository scaffolding, and documentation | depends: T-003 | autonomous: yes | accepts: Init scaffolds missing shared adapters without overwriting instructions, and README explains install, workflow, safety model, and adapter boundaries.
 - [x] T-005 | Add post-commit metadata synchronization | depends: T-004 | autonomous: yes | accepts: A sync command records the current Git branch, HEAD, fingerprint, and timestamp without altering task state.
-- [ ] T-006 | Build safe multi-session coordination | depends: T-005 | autonomous: yes | accepts: Concurrent local sessions receive a bounded shared status signal, claims are exclusive across worktrees, unsafe same-worktree writes are rejected, and adversarial tests cover races and state integrity.
+- [x] T-006 | Build safe multi-session coordination | depends: T-005 | autonomous: yes | accepts: Concurrent local sessions receive a bounded shared status signal, claims are exclusive across worktrees, unsafe same-worktree writes are rejected, and adversarial tests cover races and state integrity.
 ## Active Decisions
 
 - D-001 — Keep committed durable project knowledge in `PROJECT_STATE.md`; Git is the archive. Keep short-lived same-machine ownership outside that file. Why: a bounded current projection avoids both vendor lock-in and transcript bloat without turning progress pings into merge conflicts. Evidence: `internal/continuity/state.go`, `internal/continuity/coordination.go`.
@@ -77,16 +77,15 @@ Validation: none
 - Do not let multiple Codex child agents write one parent checkout. They share the parent's hook session ID; use separate worktrees for independent writers. Evidence: `AGENTS.md`, `.codex/hooks.json`.
 
 ## Verification
-
-- `go test ./... -count=1` — pass.
-- `go test -race ./... -count=1` — pass.
-- `go vet ./...` and `git diff --check` — pass.
+- go vet ./... and git diff --check: pass
+- go test -race ./... -count=1: pass
+- go test ./... -count=1: pass
 - `sh -n .codex/hooks/continuity.sh` and Ruby JSON parsing of `.codex/hooks.json` — pass.
 - Simulated Codex `SessionStart`, `SubagentStart`, user-prompt pulse, Bash, and `apply_patch` hook inputs — pass; non-owner writes are denied and read-only inspection remains available.
 - Fresh temporary-repository `continuity init` followed by `continuity check` — pass.
 - `continuity sync` preserves active task state while refreshing Git metadata — pass.
-
 ## Recent Material Changes
+- Integrated T-006 at 667498ef75cbec10d4a2caeb99b0f6d722f2cc82: Implemented bounded same-machine multi-session coordination with exclusive claims, safe lifecycle integration, and Codex live-context hooks.
 - Completed T-005: Added and verified post-commit metadata synchronization; the command refreshes branch, HEAD, fingerprint, and timestamp without altering task state.
 - Completed T-004: Completed fresh-repository scaffolding, installation and cross-harness documentation, durable failure notes, and final release validation including unit, race, vet, skill, CLI, and fresh-init checks.
 - Completed T-003: Verified lifecycle completion, dependency blocking, stale source rejection, Git-backed reconciliation, branch snapshots, and review-required evidence anchors through automated tests and a real stale-state run.
@@ -96,5 +95,5 @@ Validation: none
 - Added initial portable state engine, task graph, and unit tests.
 - Added adapter scaffolding to `continuity init` with preservation checks for existing instructions.
 ## Handoff
-Last completed: T-005 — Added and verified post-commit metadata synchronization; the command refreshes branch, HEAD, fingerprint, and timestamp without altering task state.
-Immediate restart action: Run continuity status; claim only an approved task in the current worktree, then use checkpoint/finalize/integrate to project verified work back into this index.
+Last completed: T-006 — Implemented bounded same-machine multi-session coordination with exclusive claims, safe lifecycle integration, prompt pulses, and Codex write guards.
+Immediate restart action: Run continuity context and continuity status. No autonomous work remains; record and approve the next outcome before claiming new work.
