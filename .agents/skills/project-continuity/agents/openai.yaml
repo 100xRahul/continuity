@@ -1,0 +1,4 @@
+interface:
+  display_name: "Project Continuity"
+  short_description: "Resume work from durable project state"
+  default_prompt: "Use $project-continuity to resume or hand off this repository task."

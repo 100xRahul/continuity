@@ -1,0 +1,6 @@
+---
+description: Enforce repository-native continuity for non-trivial work.
+alwaysApply: true
+---
+
+Read and follow `AGENTS.md`. Treat `PROJECT_STATE.md` as the durable cross-harness authority and use the `project-continuity` workflow before starting, resuming, handing off, or completing non-trivial work.
