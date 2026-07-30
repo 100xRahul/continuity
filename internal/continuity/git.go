@@ -219,6 +219,46 @@ func ResolveCommit(directory, revision string) (string, error) {
 	return strings.TrimSpace(output), nil
 }
 
+// ChangedPathsBetween returns the repository-relative paths changed by a
+// completed worker result. A claim records its base commit so a task spanning
+// several commits retains all of its changed paths. Older completion records
+// without a base fall back to the final commit's own diff.
+func ChangedPathsBetween(directory, base, commit string) ([]string, error) {
+	resolvedCommit, err := ResolveCommit(directory, commit)
+	if err != nil {
+		return nil, err
+	}
+	var output string
+	if base = strings.TrimSpace(base); base != "" && base != "unborn" {
+		resolvedBase, err := ResolveCommit(directory, base)
+		if err != nil {
+			return nil, fmt.Errorf("resolve task base commit %s: %w", base, err)
+		}
+		output, err = git(directory, "diff", "--name-only", "-z", resolvedBase, resolvedCommit)
+	} else {
+		output, err = git(directory, "diff-tree", "--root", "--no-commit-id", "--name-only", "-r", "-z", resolvedCommit)
+	}
+	if err != nil {
+		return nil, err
+	}
+	paths := []string{}
+	seen := map[string]bool{}
+	for _, value := range strings.Split(output, "\x00") {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		path := filepath.ToSlash(filepath.Clean(value))
+		if path == "." || path == ".." || strings.HasPrefix(path, "../") || seen[path] {
+			continue
+		}
+		seen[path] = true
+		paths = append(paths, path)
+	}
+	sort.Strings(paths)
+	return paths, nil
+}
+
 // CommitIsAncestor reports whether revision has been integrated into the
 // current checkout's HEAD. A false result with no error is an ordinary
 // non-ancestor, not a Git failure.

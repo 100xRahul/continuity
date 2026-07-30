@@ -419,7 +419,8 @@ func integrateCommand(args []string) error {
 		if !found {
 			return fmt.Errorf("task %s is not in Ready Queue", *id)
 		}
-		if task.Status != "x" {
+		newlyIntegrated := task.Status != "x"
+		if newlyIntegrated {
 			queue, err := continuity.UpdateTaskStatus(state.Section("Ready Queue"), *id, "x")
 			if err != nil {
 				return err
@@ -432,11 +433,6 @@ func integrateCommand(args []string) error {
 			if err := state.ReplaceSection("Recent Material Changes", recent); err != nil {
 				return err
 			}
-			handoff := "Last completed: " + *id + " — " + integrated.Summary + "\n" +
-				"Immediate restart action: Run continuity status and continuity ready. Claim a ready task with its durable contract; if an approved plan has no ready task, derive only a focused technical step inside its active outcome from an unclaimed integration checkout. In a legacy project, use continuity task add --approved only for explicitly approved work."
-			if err := state.ReplaceSection("Handoff", handoff); err != nil {
-				return err
-			}
 			verification := strings.TrimSpace(state.Section("Verification"))
 			for _, evidence := range integrated.Evidence {
 				verification = "- " + evidence + "\n" + verification
@@ -444,12 +440,34 @@ func integrateCommand(args []string) error {
 			if err := state.ReplaceSection("Verification", verification); err != nil {
 				return err
 			}
-			if err := synchronize(state, root); err != nil {
-				return err
-			}
-			if err := state.Save(); err != nil {
-				return err
-			}
+		}
+		next, err := selectNextWork(root, state)
+		if err != nil {
+			return err
+		}
+		record, err := deriveChangeRecord(root, task, integrated, next)
+		if err != nil {
+			return err
+		}
+		if err := writeChangeArchive(root, record); err != nil {
+			return err
+		}
+		if err := upsertChangeCapsule(state, record); err != nil {
+			return err
+		}
+		handoff := "Last completed: " + *id + " — " + integrated.Summary + "\n" +
+			"Immediate restart action: " + next.Action
+		if err := state.ReplaceSection("Handoff", handoff); err != nil {
+			return err
+		}
+		if err := synchronize(state, root); err != nil {
+			return err
+		}
+		if result := state.Validate(continuity.DefaultStateBudget); !result.OK() {
+			return fmt.Errorf("integration exceeds durable state budget: %s", strings.Join(result.Errors, "; "))
+		}
+		if err := state.Save(); err != nil {
+			return err
 		}
 		return nil
 	})

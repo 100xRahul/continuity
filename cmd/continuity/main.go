@@ -89,7 +89,8 @@ Usage:
   continuity plan validate|status [--repo .]
   continuity plan approve --approved --milestone M-001 [--repo .]
   continuity plan activate --approved --milestone M-002 [--repo .]
-  continuity plan milestone|outcome|source|constraint|assumption add ... [--repo .]
+  continuity plan milestone|source|constraint|assumption add ... [--repo .]
+  continuity plan outcome add|complete ... [--repo .]
   continuity plan decision add|resolve ... [--repo .]
   continuity plan delta add|approve ... [--repo .]
   continuity status [--repo .]
@@ -880,6 +881,7 @@ func startCommand(args []string) error {
 		Owner:           claimOwner,
 		Worktree:        root,
 		Branch:          snapshot.Branch,
+		BaseCommit:      snapshot.Head,
 		Scope:           claimScope,
 		Goal:            claimGoal,
 		Acceptance:      claimAcceptance,

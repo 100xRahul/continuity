@@ -85,7 +85,7 @@ func planInitCommand(args []string) error {
 		if err := plan.Save(); err != nil {
 			return err
 		}
-		return synchronizePlanIndex(root, plan)
+		return synchronizePlanIndexWithHandoff(root, plan, renderPlanHandoff(plan))
 	}); err != nil {
 		return err
 	}
@@ -193,7 +193,7 @@ func planApproveCommand(args []string) error {
 		if err := plan.Save(); err != nil {
 			return err
 		}
-		if err := synchronizePlanIndex(root, plan); err != nil {
+		if err := synchronizePlanIndexWithHandoff(root, plan, renderPlanHandoff(plan)); err != nil {
 			return err
 		}
 		commit, err = continuity.CommitFiles(root, "docs(plan): approve "+*milestoneID, continuity.PlanFilename, continuity.StateFilename)
@@ -259,13 +259,40 @@ func planActivateCommand(args []string) error {
 		if result := plan.Validate(); !result.OK() {
 			return fmt.Errorf("cannot activate invalid plan: %s", strings.Join(result.Errors, "; "))
 		}
+		completedMilestone, err := planMilestoneByID(plan, current)
+		if err != nil {
+			return err
+		}
+		if err := writeMilestoneArchive(root, plan, completedMilestone); err != nil {
+			return err
+		}
 		if err := plan.Save(); err != nil {
 			return err
 		}
-		if err := synchronizePlanIndex(root, plan); err != nil {
+		state, err := loadState(root)
+		if err != nil {
 			return err
 		}
-		commit, err = continuity.CommitFiles(root, "docs(plan): activate "+*milestoneID, continuity.PlanFilename, continuity.StateFilename)
+		next, err := selectNextWork(root, state)
+		if err != nil {
+			return err
+		}
+		handoff := "Last completed: " + completedMilestone.ID + " — " + completedMilestone.Title + "\n" +
+			"Immediate restart action: " + next.Action
+		if err := synchronizePlanIndexWithHandoff(root, plan, handoff); err != nil {
+			return err
+		}
+		files := []string{continuity.PlanFilename, continuity.StateFilename, milestoneArchivePath(completedMilestone.ID)}
+		for _, outcome := range mustOutcomes(plan) {
+			if outcome.Milestone == completedMilestone.ID {
+				files = append(files, outcomeArchivePath(outcome.ID))
+			}
+		}
+		files, err = presentHistoryFiles(root, files...)
+		if err != nil {
+			return err
+		}
+		commit, err = continuity.CommitFiles(root, "docs(plan): activate "+*milestoneID, files...)
 		return err
 	}); err != nil {
 		return err
@@ -304,9 +331,20 @@ func planMilestoneCommand(args []string) error {
 }
 
 func planOutcomeCommand(args []string) error {
-	if len(args) == 0 || args[0] != "add" {
-		return errors.New("usage: continuity plan outcome add --id O-001 --milestone M-001 --priority 1 --title text --scope path --accepts text")
+	if len(args) == 0 {
+		return errors.New("usage: continuity plan outcome add|complete ...")
 	}
+	switch args[0] {
+	case "add":
+		return planOutcomeAddCommand(args[1:])
+	case "complete":
+		return planOutcomeCompleteCommand(args[1:])
+	default:
+		return errors.New("usage: continuity plan outcome add|complete ...")
+	}
+}
+
+func planOutcomeAddCommand(args []string) error {
 	flags := flag.NewFlagSet("plan outcome add", flag.ContinueOnError)
 	flags.SetOutput(os.Stderr)
 	repo := flags.String("repo", ".", "repository path")
@@ -316,7 +354,7 @@ func planOutcomeCommand(args []string) error {
 	title := flags.String("title", "", "user-visible outcome title")
 	scope := flags.String("scope", "", "comma-separated repository-relative scope")
 	acceptance := flags.String("accepts", "", "observable outcome completion")
-	if err := flags.Parse(args[1:]); err != nil {
+	if err := flags.Parse(args); err != nil {
 		return err
 	}
 	if *priority <= 0 {
@@ -339,6 +377,117 @@ func planOutcomeCommand(args []string) error {
 		line := continuity.RenderOutcome(continuity.Outcome{Status: " ", ID: *id, Milestone: *milestone, Priority: *priority, Title: *title, Scope: paths, Acceptance: *acceptance})
 		return appendPlanSection(plan, "Outcomes", line)
 	})
+}
+
+// planOutcomeCompleteCommand records the completion of a user-visible outcome
+// only after every linked implementation task is integrated. It is an
+// execution fact, not new product scope, so the evidence-backed receipt is
+// automated and immediately committed from the integration checkout.
+func planOutcomeCompleteCommand(args []string) error {
+	flags := flag.NewFlagSet("plan outcome complete", flag.ContinueOnError)
+	flags.SetOutput(os.Stderr)
+	repo := flags.String("repo", ".", "repository path")
+	id := flags.String("id", "", "completed outcome ID")
+	evidence := flags.String("evidence", "", "semicolon-separated completion evidence")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	if err := requirePlanFields(map[string]string{"--id": *id, "--evidence": *evidence}); err != nil {
+		return err
+	}
+	evidenceItems := parseEvidence(*evidence)
+	if len(evidenceItems) == 0 {
+		return errors.New("--evidence must contain at least one completion fact")
+	}
+	root, err := repoRoot(*repo)
+	if err != nil {
+		return err
+	}
+	var commit string
+	if err := continuity.WithCoordinationLock(root, func() error {
+		if err := requireUnclaimedWorktree(root); err != nil {
+			return err
+		}
+		if err := requirePlanningStateFresh(root); err != nil {
+			return err
+		}
+		if err := continuity.EnsureCommitIdentity(root); err != nil {
+			return err
+		}
+		plan, err := loadPlan(root)
+		if err != nil {
+			return err
+		}
+		if plan.Meta["status"] != "approved" {
+			return errors.New("outcomes can complete only in an approved plan")
+		}
+		outcome, err := planOutcomeByID(plan, *id)
+		if err != nil {
+			return err
+		}
+		if outcome.Milestone != plan.Meta["active_milestone"] {
+			return fmt.Errorf("outcome %s is outside active milestone %s", outcome.ID, plan.Meta["active_milestone"])
+		}
+		if outcome.Status == "x" {
+			return fmt.Errorf("outcome %s is already complete", outcome.ID)
+		}
+		state, err := loadState(root)
+		if err != nil {
+			return err
+		}
+		tasks, err := continuity.ParseTasks(state.Section("Ready Queue"))
+		if err != nil {
+			return err
+		}
+		linked, incomplete := tasksForOutcome(tasks, outcome.ID)
+		if len(linked) == 0 {
+			return fmt.Errorf("outcome %s has no linked integrated tasks", outcome.ID)
+		}
+		if len(incomplete) > 0 {
+			return fmt.Errorf("outcome %s still has unfinished task(s): %s", outcome.ID, strings.Join(incomplete, ", "))
+		}
+		outcome.Status = "x"
+		updated, err := continuity.ReplacePlanRecord(plan.Section("Outcomes"), outcome.ID, continuity.RenderOutcome(outcome))
+		if err != nil {
+			return err
+		}
+		if err := plan.ReplaceSection("Outcomes", updated); err != nil {
+			return err
+		}
+		plan.SetMeta("updated_at", time.Now().UTC().Format(time.RFC3339))
+		if result := plan.Validate(); !result.OK() {
+			return fmt.Errorf("outcome completion makes plan invalid: %s", strings.Join(result.Errors, "; "))
+		}
+		if err := plan.Save(); err != nil {
+			return err
+		}
+		next, err := selectNextWork(root, state)
+		if err != nil {
+			return err
+		}
+		if err := writeOutcomeArchive(root, outcome, linked, evidenceItems, next); err != nil {
+			return err
+		}
+		handoff := "Last completed: " + outcome.ID + " — " + outcome.Title + "\n" +
+			"Immediate restart action: " + next.Action
+		if err := synchronizePlanIndexWithHandoff(root, plan, handoff); err != nil {
+			return err
+		}
+		files := []string{continuity.PlanFilename, continuity.StateFilename, outcomeArchivePath(outcome.ID)}
+		for _, task := range linked {
+			files = append(files, changeArchivePath(task.ID))
+		}
+		files, err = presentHistoryFiles(root, files...)
+		if err != nil {
+			return err
+		}
+		commit, err = continuity.CommitFiles(root, "docs(plan): complete "+outcome.ID, files...)
+		return err
+	}); err != nil {
+		return err
+	}
+	fmt.Printf("completed %s and committed %s\n", *id, commit)
+	return nil
 }
 
 func planSourceCommand(args []string) error {
@@ -701,6 +850,14 @@ func requireUnclaimedWorktree(root string) error {
 }
 
 func synchronizePlanIndex(root string, plan *continuity.Plan) error {
+	return synchronizePlanIndexWithHandoff(root, plan, "")
+}
+
+// synchronizePlanIndexWithHandoff updates the compact plan projection without
+// accidentally replacing a task-level handoff. Plan approval, activation, and
+// outcome completion may deliberately supply a new restart action; routine
+// plan edits preserve the latest integrated-task handoff instead.
+func synchronizePlanIndexWithHandoff(root string, plan *continuity.Plan, handoff string) error {
 	state, err := loadState(root)
 	if err != nil {
 		return err
@@ -714,8 +871,10 @@ func synchronizePlanIndex(root string, plan *continuity.Plan) error {
 	if err := state.ReplaceSection("Approved Outcomes", renderPlanProjection(plan)); err != nil {
 		return err
 	}
-	if err := state.ReplaceSection("Handoff", renderPlanHandoff(plan)); err != nil {
-		return err
+	if strings.TrimSpace(handoff) != "" {
+		if err := state.ReplaceSection("Handoff", handoff); err != nil {
+			return err
+		}
 	}
 	if err := synchronize(state, root); err != nil {
 		return err
@@ -1022,6 +1181,15 @@ func planHasMilestone(plan *continuity.Plan, id string) bool {
 	return false
 }
 
+func planMilestoneByID(plan *continuity.Plan, id string) (continuity.Milestone, error) {
+	for _, item := range mustMilestones(plan) {
+		if item.ID == id {
+			return item, nil
+		}
+	}
+	return continuity.Milestone{}, fmt.Errorf("unknown milestone %s", id)
+}
+
 func planHasOutcome(plan *continuity.Plan, id string) bool {
 	for _, item := range mustOutcomes(plan) {
 		if item.ID == id {
@@ -1029,6 +1197,28 @@ func planHasOutcome(plan *continuity.Plan, id string) bool {
 		}
 	}
 	return false
+}
+
+func planOutcomeByID(plan *continuity.Plan, id string) (continuity.Outcome, error) {
+	for _, item := range mustOutcomes(plan) {
+		if item.ID == id {
+			return item, nil
+		}
+	}
+	return continuity.Outcome{}, fmt.Errorf("unknown outcome %s", id)
+}
+
+func tasksForOutcome(tasks []continuity.Task, outcomeID string) (linked []continuity.Task, incomplete []string) {
+	for _, task := range tasks {
+		if task.Outcome != outcomeID {
+			continue
+		}
+		linked = append(linked, task)
+		if task.Status != "x" {
+			incomplete = append(incomplete, task.ID)
+		}
+	}
+	return linked, incomplete
 }
 
 func planDecisionByID(plan *continuity.Plan, id string) (continuity.DecisionCard, error) {

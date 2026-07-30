@@ -438,6 +438,35 @@ func (s *State) ContextCapsules() ([]ContextCapsule, error) {
 	return capsules, nil
 }
 
+// ReplaceContextCapsules writes the complete path-indexed capsule set without
+// making callers reimplement the Markdown layout. It is useful for lifecycle
+// code that replaces a generated capsule while preserving user-maintained
+// architecture capsules.
+func (s *State) ReplaceContextCapsules(capsules []ContextCapsule) error {
+	return s.ReplaceSection("Context Capsules", RenderContextCapsules(capsules))
+}
+
+func RenderContextCapsules(capsules []ContextCapsule) string {
+	blocks := make([]string, 0, len(capsules))
+	for _, capsule := range capsules {
+		var builder strings.Builder
+		builder.WriteString("### ")
+		builder.WriteString(strings.TrimSpace(capsule.Name))
+		builder.WriteByte('\n')
+		builder.WriteString("Paths: ")
+		builder.WriteString(strings.Join(capsule.Paths, ", "))
+		builder.WriteByte('\n')
+		builder.WriteString("Summary: ")
+		builder.WriteString(strings.TrimSpace(capsule.Summary))
+		if details := strings.TrimSpace(capsule.Details); details != "" {
+			builder.WriteByte('\n')
+			builder.WriteString(details)
+		}
+		blocks = append(blocks, builder.String())
+	}
+	return strings.Join(blocks, "\n\n")
+}
+
 func parseCapsulePaths(value string) ([]string, error) {
 	if strings.TrimSpace(value) == "" {
 		return nil, errors.New("Paths must name at least one repository-relative path")

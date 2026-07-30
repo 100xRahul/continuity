@@ -29,7 +29,7 @@ Honor the task contract. Checkpoint material progress, validation, or blockers w
 
 ## Complete and integrate
 
-Run focused validation, commit the worker result, then finalize with the commit and factual evidence. A completion remains pending until its commit is present in the integration checkout. After merge or handoff, run `continuity integrate --id <task>` to update the durable index and unblock dependencies.
+Run focused validation, commit the worker result, then finalize with the commit and factual evidence. A completion remains pending until its commit is present in the integration checkout. After merge or handoff, run `continuity integrate --id <task>` to update the durable index and unblock dependencies. Integration derives actual changed paths from the claim's Git range, writes `PROJECT_HISTORY/changes/<task>.md`, keeps at most three short path-scoped change capsules active, and gives the handoff the actual next ready task. Commit the state and generated archive together. Once every task linked to an active outcome is integrated, run `continuity plan outcome complete --id <outcome> --evidence 'verification: pass'`; milestone activation archives its completed outcome set.
 
 Keep context bounded: use `continuity context --scope <task path>` first, then read only the matching Context Capsules, relevant state section, and mapped code. The durable index may hold approximately 30k tokens; routine startup must not load it wholesale. Read [state-schema.md](references/state-schema.md) when changing state structure or resolving ownership, freshness, or integration questions.
 

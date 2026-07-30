@@ -21,7 +21,10 @@ func TestLifecycleCommands(t *testing.T) {
 		t.Fatal(err)
 	}
 	state := continuity.NewTemplate(filepath.Join(root, continuity.StateFilename), "Test", "Test lifecycle.", continuity.Snapshot(root), fingerprint)
-	if err := state.ReplaceSection("Ready Queue", "- [ ] T-001 | Prove lifecycle | depends: none | autonomous: yes | accepts: State reaches ready after finalization."); err != nil {
+	if err := state.ReplaceSection("Ready Queue", strings.Join([]string{
+		"- [ ] T-001 | Prove lifecycle | depends: none | autonomous: yes | accepts: State reaches ready after finalization.",
+		"- [ ] T-002 | Resume after lifecycle | depends: T-001 | autonomous: yes | accepts: The follow-up task is ready.",
+	}, "\n")); err != nil {
 		t.Fatal(err)
 	}
 	if err := state.Save(); err != nil {
@@ -38,6 +41,11 @@ func TestLifecycleCommands(t *testing.T) {
 	if err := checkpointCommand([]string{"--repo", root, "--summary", "Started and inspected state.", "--next-action", "Finalize the task."}); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(root, "result.go"), []byte("package result\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGitCommand(t, root, "add", "result.go")
+	runGitCommand(t, root, "commit", "-m", "worker result")
 	if err := finalizeCommand([]string{"--repo", root, "--summary", "Lifecycle command test passed.", "--commit", "HEAD", "--evidence", "go test lifecycle: pass"}); err != nil {
 		t.Fatal(err)
 	}
@@ -58,8 +66,36 @@ func TestLifecycleCommands(t *testing.T) {
 	if !strings.Contains(finished.Section("Recent Material Changes"), "Integrated T-001") {
 		t.Fatalf("integration was not recorded: %s", finished.Section("Recent Material Changes"))
 	}
-	if !strings.Contains(finished.Section("Handoff"), "Last completed: T-001 — Lifecycle command test passed.") || !strings.Contains(finished.Section("Handoff"), "Run continuity status") || !strings.Contains(finished.Section("Handoff"), "continuity ready") {
+	if !strings.Contains(finished.Section("Handoff"), "Last completed: T-001 — Lifecycle command test passed.") || !strings.Contains(finished.Section("Handoff"), "continuity context") || !strings.Contains(finished.Section("Handoff"), "claim T-002") {
 		t.Fatalf("integration did not refresh handoff: %s", finished.Section("Handoff"))
+	}
+	archive, err := os.ReadFile(filepath.Join(root, continuity.PlanHistoryDir, "changes", "T-001.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(archive), "- Intent: Prove lifecycle") || !strings.Contains(string(archive), "`result.go`") || !strings.Contains(string(archive), "go test lifecycle: pass") || !strings.Contains(string(archive), "T-002") {
+		t.Fatalf("change archive is incomplete: %s", archive)
+	}
+	capsules, err := finished.ContextCapsules()
+	if err != nil {
+		t.Fatal(err)
+	}
+	foundCapsule := false
+	for _, capsule := range capsules {
+		if capsule.Name != "Change T-001" {
+			continue
+		}
+		foundCapsule = strings.Contains(strings.Join(capsule.Paths, ","), "result.go") && strings.Contains(capsule.Details, "Next: T-002")
+	}
+	if !foundCapsule {
+		t.Fatalf("integration did not create a scoped change capsule: %#v", capsules)
+	}
+	context, err := compactContext(root, "", 12_000, []string{"result.go"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(context, "Context capsule: Change T-001") {
+		t.Fatalf("scoped context omitted the change capsule: %s", context)
 	}
 	if _, err := os.Stat(filepath.Join(root, continuity.StateFilename)); err != nil {
 		t.Fatal(err)

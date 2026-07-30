@@ -38,7 +38,8 @@ When no task is queued, work only from an unclaimed integration checkout. In a l
 
 1. Run the task's focused validation and commit the worker result.
 2. Run `continuity finalize --commit <commit> --summary ... --evidence 'command: result'`. This creates a local completion record; it does not falsely mark the shared project index complete.
-3. Merge or hand off the commit into the integration checkout, then run `continuity integrate --id T-001`. Only integration updates `PROJECT_STATE.md` and unblocks dependent work.
+3. Merge or hand off the commit into the integration checkout, then run `continuity integrate --id T-001`. It derives actual changed paths from the claim's Git range, writes `PROJECT_HISTORY/changes/T-001.md`, refreshes a bounded path-scoped `Change T-001` capsule, and names the actual next ready task in the handoff. Commit the generated history file with `PROJECT_STATE.md` before unrelated work.
+4. Once every linked task for an active approved outcome is integrated, run `continuity plan outcome complete --id O-001 --evidence 'focused verification: pass'`. This records a committed outcome archive. `continuity plan activate --approved --milestone M-002` then archives the completed milestone before switching active context.
 
 ## Boundaries
 
@@ -46,5 +47,5 @@ When no task is queued, work only from an unclaimed integration checkout. In a l
 - Do not claim `autonomous: no` work. Do not invent product features; a derived task must stay inside an active approved outcome's scope and acceptance boundary.
 - Keep state claims factual and one line. Never paste raw chats, model reasoning, source code, secrets, or untrusted multiline text into durable state.
 - Keep `Context Capsules` path-scoped. The durable index may hold approximately 30k tokens, but a routine context packet must stay bounded and select only project-wide plus task-relevant capsules.
-- Preserve completed milestones in committed `PROJECT_HISTORY/` archives when active plan context would otherwise grow large.
+- Preserve completed change, outcome, and milestone history in committed `PROJECT_HISTORY/` archives. Active `Change T-*` capsules retain only the latest three short, path-scoped handoffs.
 - Stop for destructive actions, production changes, credentials, paid services, security uncertainty, unresolved product choices, repeated blockers, or unexplained validation failures.

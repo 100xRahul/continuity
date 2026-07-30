@@ -53,7 +53,9 @@ The outcome must be active, each task path must be contained by the outcome's de
 
 For sessions on one machine, the CLI stores claims, heartbeats, and pending completions in Git's common directory. Linked worktrees therefore see the same live board without committing it or creating merge conflicts.
 
-A claim contains task ID, owner/session identity, worktree, branch, scope, goal, next action, selection reason, and lease. A claim is exclusive by task, worktree, and overlapping scope. A completion records a verified commit until `continuity integrate` confirms that commit is in the integration checkout.
+A claim contains task ID, owner/session identity, worktree, branch, base commit, scope, goal, next action, selection reason, and lease. A claim is exclusive by task, worktree, and overlapping scope. A completion retains that task contract plus a verified commit until `continuity integrate` confirms that commit is in the integration checkout.
+
+Integration derives changed paths from the recorded base commit through the verified result commit. It writes a permanent `PROJECT_HISTORY/changes/T-001.md` record and refreshes a generated `Change T-001` capsule with intent, changed paths, validation evidence, next work, and the archive path. Preserve only the newest three generated change capsules in the active index; archives remain committed and on-demand.
 
 ## Ownership
 

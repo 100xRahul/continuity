@@ -92,6 +92,67 @@ func TestFingerprintUsesGitFilesAndHonorsIgnoreRules(t *testing.T) {
 	}
 }
 
+func TestChangedPathsBetweenUsesClaimBaseAcrossMultipleFiles(t *testing.T) {
+	root := t.TempDir()
+	if _, err := EnsureGitRepo(root); err != nil {
+		t.Fatal(err)
+	}
+	configureTestGit(t, root)
+	if err := os.WriteFile(filepath.Join(root, "first.go"), []byte("package test\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runTestGit(t, root, "add", "first.go")
+	runTestGit(t, root, "commit", "-m", "baseline")
+	base, err := ResolveCommit(root, "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "first.go"), []byte("package test\nfunc First() {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "second.go"), []byte("package test\nfunc Second() {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runTestGit(t, root, "add", "first.go", "second.go")
+	runTestGit(t, root, "commit", "-m", "task result")
+	commit, err := ResolveCommit(root, "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths, err := ChangedPathsBetween(root, base, commit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(paths, ","); got != "first.go,second.go" {
+		t.Fatalf("changed paths = %q", got)
+	}
+}
+
+func TestChangedPathsBetweenFallsBackToFinalCommitForLegacyCompletion(t *testing.T) {
+	root := t.TempDir()
+	if _, err := EnsureGitRepo(root); err != nil {
+		t.Fatal(err)
+	}
+	configureTestGit(t, root)
+	if err := os.WriteFile(filepath.Join(root, "existing.go"), []byte("package test\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runTestGit(t, root, "add", "existing.go")
+	runTestGit(t, root, "commit", "-m", "baseline")
+	if err := os.WriteFile(filepath.Join(root, "legacy.go"), []byte("package test\nfunc Legacy() {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runTestGit(t, root, "add", "legacy.go")
+	runTestGit(t, root, "commit", "-m", "legacy result")
+	paths, err := ChangedPathsBetween(root, "", "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := strings.Join(paths, ","), "legacy.go"; got != want {
+		t.Fatalf("legacy changed paths = %q, want %q", got, want)
+	}
+}
+
 func configureTestGit(t *testing.T, root string) {
 	t.Helper()
 	runTestGit(t, root, "config", "user.name", "Continuity Test")

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -54,26 +55,23 @@ func TestPlanDraftApprovalActivationAndDelta(t *testing.T) {
 		t.Fatalf("state did not project active plan: %#v %q", state.Meta, state.Section("Approved Outcomes"))
 	}
 
-	outcomes, err := plan.Outcomes()
+	if err := state.ReplaceSection("Ready Queue", "- [x] T-001 | Complete first outcome | outcome: O-001 | scope: internal/continuity | depends: none | autonomous: yes | validates: go test ./internal/continuity | accepts: Focused tests pass. | derived: It implements the first approved result."); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.Save(); err != nil {
+		t.Fatal(err)
+	}
+	next, err := selectNextWork(root, state)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for index := range outcomes {
-		if outcomes[index].ID == "O-001" {
-			outcomes[index].Status = "x"
-			updated, err := continuity.ReplacePlanRecord(plan.Section("Outcomes"), outcomes[index].ID, continuity.RenderOutcome(outcomes[index]))
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err := plan.ReplaceSection("Outcomes", updated); err != nil {
-				t.Fatal(err)
-			}
-		}
+	if !strings.Contains(next.Summary, "O-001") || !strings.Contains(next.Action, "plan outcome complete --id O-001") {
+		t.Fatalf("completed outcome did not become the next handoff: %#v", next)
 	}
-	if err := plan.Save(); err != nil {
+	if err := planOutcomeCommand([]string{"complete", "--repo", root, "--id", "O-001", "--evidence", "go test ./internal/continuity: pass"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := synchronizePlanIndex(root, plan); err != nil {
+	if _, err := os.Stat(filepath.Join(root, continuity.PlanHistoryDir, "outcomes", "O-001.md")); err != nil {
 		t.Fatal(err)
 	}
 	if err := planActivateCommand([]string{"--repo", root, "--approved", "--milestone", "M-002"}); err != nil {
@@ -91,6 +89,20 @@ func TestPlanDraftApprovalActivationAndDelta(t *testing.T) {
 	}
 	if plan.Meta["active_milestone"] != "M-002" {
 		t.Fatalf("next milestone was not activated: %#v", plan.Meta)
+	}
+	outcomes, err := plan.Outcomes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(outcomes) < 1 || outcomes[0].Status != "x" {
+		t.Fatalf("completed outcome was not recorded: %#v", outcomes)
+	}
+	milestoneArchive, err := os.ReadFile(filepath.Join(root, continuity.PlanHistoryDir, "milestones", "M-001.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(milestoneArchive), "- [x] M-001") || !strings.Contains(string(milestoneArchive), "O-001") {
+		t.Fatalf("milestone archive omitted completed snapshot: %s", milestoneArchive)
 	}
 	deltas, err := plan.Deltas()
 	if err != nil || len(deltas) != 1 || !deltas[0].Approved {
@@ -114,6 +126,39 @@ func TestPlanCommandsRequireApprovalAndDraftBoundaries(t *testing.T) {
 	}
 	if err := planOutcomeCommand([]string{"add", "--repo", root, "--id", "O-404", "--milestone", "M-404", "--priority", "1", "--title", "Bad", "--scope", "internal", "--accepts", "Fails."}); err == nil || !strings.Contains(err.Error(), "unknown milestone") {
 		t.Fatalf("unknown milestone outcome was accepted: %v", err)
+	}
+}
+
+func TestPlanOutcomeCompletionRejectsUnintegratedTask(t *testing.T) {
+	root := t.TempDir()
+	if err := initCommand([]string{"--repo", root, "--objective", "Test outcome completion boundary."}); err != nil {
+		t.Fatal(err)
+	}
+	runGitCommand(t, root, "config", "user.name", "Continuity Test")
+	runGitCommand(t, root, "config", "user.email", "continuity@example.test")
+	if err := planMilestoneCommand([]string{"add", "--repo", root, "--id", "M-001", "--priority", "1", "--title", "First", "--accepts", "Works."}); err != nil {
+		t.Fatal(err)
+	}
+	if err := planOutcomeCommand([]string{"add", "--repo", root, "--id", "O-001", "--milestone", "M-001", "--priority", "1", "--title", "Result", "--scope", "internal/continuity", "--accepts", "Focused tests pass."}); err != nil {
+		t.Fatal(err)
+	}
+	if err := planApproveCommand([]string{"--repo", root, "--approved", "--milestone", "M-001"}); err != nil {
+		t.Fatal(err)
+	}
+	state, err := continuity.LoadState(filepath.Join(root, continuity.StateFilename))
+	if err != nil {
+		t.Fatal(err)
+	}
+	queue := "- [ ] T-001 | Incomplete result | outcome: O-001 | scope: internal/continuity | depends: none | autonomous: yes | validates: go test ./internal/continuity | accepts: Focused tests pass. | derived: It implements the approved result."
+	if err := state.ReplaceSection("Ready Queue", queue); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.Save(); err != nil {
+		t.Fatal(err)
+	}
+	err = planOutcomeCommand([]string{"complete", "--repo", root, "--id", "O-001", "--evidence", "go test ./internal/continuity: pass"})
+	if err == nil || !strings.Contains(err.Error(), "unfinished task") {
+		t.Fatalf("unfinished outcome task was accepted: %v", err)
 	}
 }
 

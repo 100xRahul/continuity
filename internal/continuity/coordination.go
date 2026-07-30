@@ -29,6 +29,7 @@ type Claim struct {
 	Owner           string    `json:"owner"`
 	Worktree        string    `json:"worktree"`
 	Branch          string    `json:"branch"`
+	BaseCommit      string    `json:"base_commit,omitempty"`
 	Scope           []string  `json:"scope"`
 	Goal            string    `json:"goal"`
 	Acceptance      string    `json:"acceptance"`
@@ -52,15 +53,22 @@ func (c Claim) Stale(now time.Time) bool {
 // confirms that the referenced commit is present and projects it into
 // PROJECT_STATE.md.
 type Completion struct {
-	Schema      int       `json:"schema"`
-	TaskID      string    `json:"task_id"`
-	Owner       string    `json:"owner"`
-	Worktree    string    `json:"worktree"`
-	Branch      string    `json:"branch"`
-	Commit      string    `json:"commit"`
-	Summary     string    `json:"summary"`
-	Evidence    []string  `json:"evidence"`
-	CompletedAt time.Time `json:"completed_at"`
+	Schema          int       `json:"schema"`
+	TaskID          string    `json:"task_id"`
+	Owner           string    `json:"owner"`
+	Worktree        string    `json:"worktree"`
+	Branch          string    `json:"branch"`
+	BaseCommit      string    `json:"base_commit,omitempty"`
+	Scope           []string  `json:"scope,omitempty"`
+	Goal            string    `json:"goal,omitempty"`
+	Acceptance      string    `json:"acceptance,omitempty"`
+	NextAction      string    `json:"next_action,omitempty"`
+	Validation      string    `json:"validation,omitempty"`
+	SelectionReason string    `json:"selection_reason,omitempty"`
+	Commit          string    `json:"commit"`
+	Summary         string    `json:"summary"`
+	Evidence        []string  `json:"evidence"`
+	CompletedAt     time.Time `json:"completed_at"`
 }
 
 type ClaimRequest struct {
@@ -68,6 +76,7 @@ type ClaimRequest struct {
 	Owner           string
 	Worktree        string
 	Branch          string
+	BaseCommit      string
 	Scope           []string
 	Goal            string
 	Acceptance      string
@@ -163,7 +172,7 @@ func ClaimTask(directory string, request ClaimRequest) (Claim, error) {
 		if !validCoordinationTaskID(request.TaskID) {
 			return fmt.Errorf("invalid task ID %q", request.TaskID)
 		}
-		if !singleLine(request.Owner) || !singleLineOrEmpty(request.Goal) || !singleLineOrEmpty(request.Acceptance) || !singleLineOrEmpty(request.NextAction) || !singleLineOrEmpty(request.Validation) || !singleLineOrEmpty(request.SelectionReason) {
+		if !singleLine(request.Owner) || !singleLineOrEmpty(request.BaseCommit) || !singleLineOrEmpty(request.Goal) || !singleLineOrEmpty(request.Acceptance) || !singleLineOrEmpty(request.NextAction) || !singleLineOrEmpty(request.Validation) || !singleLineOrEmpty(request.SelectionReason) {
 			return errors.New("claim fields must be single-line text")
 		}
 		branch := strings.TrimSpace(request.Branch)
@@ -234,6 +243,7 @@ func ClaimTask(directory string, request ClaimRequest) (Claim, error) {
 			Owner:           request.Owner,
 			Worktree:        worktree,
 			Branch:          branch,
+			BaseCommit:      request.BaseCommit,
 			Scope:           scope,
 			Goal:            request.Goal,
 			Acceptance:      request.Acceptance,
@@ -304,15 +314,22 @@ func CompleteClaim(directory string, request CompletionRequest) (Completion, err
 			}
 		}
 		completion = Completion{
-			Schema:      1,
-			TaskID:      claim.TaskID,
-			Owner:       claim.Owner,
-			Worktree:    claim.Worktree,
-			Branch:      claim.Branch,
-			Commit:      request.Commit,
-			Summary:     request.Summary,
-			Evidence:    append([]string(nil), request.Evidence...),
-			CompletedAt: time.Now().UTC(),
+			Schema:          1,
+			TaskID:          claim.TaskID,
+			Owner:           claim.Owner,
+			Worktree:        claim.Worktree,
+			Branch:          claim.Branch,
+			BaseCommit:      claim.BaseCommit,
+			Scope:           append([]string(nil), claim.Scope...),
+			Goal:            claim.Goal,
+			Acceptance:      claim.Acceptance,
+			NextAction:      claim.NextAction,
+			Validation:      claim.Validation,
+			SelectionReason: claim.SelectionReason,
+			Commit:          request.Commit,
+			Summary:         request.Summary,
+			Evidence:        append([]string(nil), request.Evidence...),
+			CompletedAt:     time.Now().UTC(),
 		}
 		completionPath := filepath.Join(store, "completed", claim.TaskID+".json")
 		if err := os.MkdirAll(filepath.Dir(completionPath), 0o700); err != nil {

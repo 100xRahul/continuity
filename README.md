@@ -62,9 +62,11 @@ new session
   -> commit + continuity finalize --commit <commit> --evidence 'test: pass'
   -> merge/handoff worker commit
   -> continuity integrate --id T-001
+  -> commit PROJECT_STATE.md PROJECT_HISTORY/changes/T-001.md
+  -> continuity plan outcome complete --id O-001 --evidence 'outcome verification: pass' # after every linked task is integrated
 ```
 
-`start` claims a task but does not mutate the committed task board. `finalize` records a verified worker result locally. `integrate` is the only operation that marks the task `[x]` in `PROJECT_STATE.md`, and it refuses until the worker commit is present in the integration checkout. This prevents a background worker from falsely declaring shared work complete before its code exists on the branch everyone uses.
+`start` claims a task but does not mutate the committed task board. `finalize` records a verified worker result locally. `integrate` is the only operation that marks the task `[x]` in `PROJECT_STATE.md`, and it refuses until the worker commit is present in the integration checkout. It derives the actual Git paths changed during the claim, writes a permanent record under `PROJECT_HISTORY/changes/`, refreshes a short scoped change capsule, and directs the handoff to the next ready task. This prevents a background worker from falsely declaring shared work complete before its code exists on the branch everyone uses.
 
 ## Codex sessions
 
@@ -90,6 +92,7 @@ continuity sync                   refresh durable Git facts after reconciliation
 continuity ready                  rank unclaimed autonomous ready tasks with selection evidence
 continuity task add               record a user-specified or plan-bounded derived task before any claim exists
 continuity plan                   create, validate, approve, activate, and inspect the delivery plan
+continuity plan outcome complete  record evidence-backed completion after every linked task is integrated
 continuity start                  atomically claim a task/worktree/scope
 continuity heartbeat              refresh an owned claim lease
 continuity checkpoint             save factual in-progress claim state
@@ -143,6 +146,8 @@ Details: Load this only for authentication work; keep the precise invariants and
 ```
 
 `continuity context --scope internal/auth --limit 12000` selects the matching capsule plus project-wide orientation. When a worker has a live claim, its claim scope is selected automatically. An ordinary startup packet remains small; use a larger `--limit` only when the task needs deeper durable context. `continuity brief` intentionally prints the whole index and should be used for deliberate review, not routine startup.
+
+Integration keeps only the three newest generated `Change T-*` capsules in the active index. Each one carries intent, changed paths, validation evidence, next work, and a link to its full committed archive. A later agent working in a matching path sees the short record without rereading the previous code; older records remain available under `PROJECT_HISTORY/changes/` on demand. Once all outcome-linked tasks are integrated, `continuity plan outcome complete` writes `PROJECT_HISTORY/outcomes/O-001.md`; activating the next milestone similarly preserves `PROJECT_HISTORY/milestones/M-001.md` before changing active context.
 
 The source fingerprint uses Git's tracked and unignored files. It does not hash `.git` worktree metadata, ignored build binaries, generated harness adapters, or the target of an external symlink. A matching fingerprint avoids broad rescans; evidence anchors still tell an agent which small areas need review.
 

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -116,7 +117,7 @@ func TestConcurrentClaimsHaveOneWinner(t *testing.T) {
 
 func TestCheckpointAndCompletionLeaveSharedTerminalRecord(t *testing.T) {
 	root, _ := testWorktrees(t)
-	if _, err := ClaimTask(root, ClaimRequest{TaskID: "T-001", Owner: "codex:worker", Worktree: root, Scope: []string{"cmd"}, NextAction: "implement", SelectionReason: "It unblocks the next verified task."}); err != nil {
+	if _, err := ClaimTask(root, ClaimRequest{TaskID: "T-001", Owner: "codex:worker", Worktree: root, BaseCommit: "abc000", Scope: []string{"cmd"}, Goal: "Keep a durable handoff.", Acceptance: "Completion retains the task contract.", NextAction: "implement", Validation: "go test ./...", SelectionReason: "It unblocks the next verified task."}); err != nil {
 		t.Fatal(err)
 	}
 	claim, err := CheckpointClaim(root, CheckpointRequest{
@@ -144,7 +145,7 @@ func TestCheckpointAndCompletionLeaveSharedTerminalRecord(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if completion.Commit != "abc123" {
+	if completion.Commit != "abc123" || completion.BaseCommit != "abc000" || strings.Join(completion.Scope, ",") != "cmd" || completion.Goal != "Keep a durable handoff." || completion.Acceptance != "Completion retains the task contract." || completion.Validation != "go test ./..." || completion.SelectionReason != "It unblocks the next verified task." {
 		t.Fatalf("unexpected completion: %#v", completion)
 	}
 	claims, err := ListClaims(root)

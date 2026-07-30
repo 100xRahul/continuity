@@ -146,6 +146,24 @@ func TestContextCapsulesRejectMalformedPaths(t *testing.T) {
 	}
 }
 
+func TestReplaceContextCapsulesPreservesStructuredRecords(t *testing.T) {
+	state := NewTemplate("PROJECT_STATE.md", "Example", "Test capsule replacement.", GitSnapshot{}, "sha256:test")
+	capsules := []ContextCapsule{
+		{Name: "Architecture", Paths: []string{"internal/continuity"}, Summary: "Core state behavior.", Details: "Details: Keep the parser bounded."},
+		{Name: "Change T-001", Paths: []string{"cmd/continuity"}, Summary: "Intent: Add lifecycle command.", Details: "Details: Commit: abc123\nChanged paths: cmd/continuity/main.go\nValidation: go test: pass\nNext: T-002"},
+	}
+	if err := state.ReplaceContextCapsules(capsules); err != nil {
+		t.Fatal(err)
+	}
+	parsed, err := state.ContextCapsules()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(parsed) != 2 || parsed[1].Name != "Change T-001" || !strings.Contains(parsed[1].Details, "Validation: go test: pass") {
+		t.Fatalf("capsules did not round trip: %#v", parsed)
+	}
+}
+
 func TestDefaultStateBudgetApproximatesThirtyThousandTokens(t *testing.T) {
 	if DefaultStateBudget != ApproximateStateTokenBudget*ApproximateBytesPerToken {
 		t.Fatalf("state budget = %d, want %d", DefaultStateBudget, ApproximateStateTokenBudget*ApproximateBytesPerToken)
