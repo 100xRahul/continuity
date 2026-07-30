@@ -69,6 +69,18 @@ func TestClaimRejectsSecondWriterInSameWorktree(t *testing.T) {
 	}
 }
 
+func TestClaimRejectsSecondWriterOnSameBranch(t *testing.T) {
+	root, peer := testWorktrees(t)
+	if _, err := ClaimTask(root, ClaimRequest{TaskID: "T-001", Owner: "codex:first", Worktree: root, Branch: "agent/auth", Scope: []string{"internal/auth"}}); err != nil {
+		t.Fatal(err)
+	}
+	_, err := ClaimTask(peer, ClaimRequest{TaskID: "T-002", Owner: "codex:second", Worktree: peer, Branch: "agent/auth", Scope: []string{"web"}})
+	var conflict *ClaimConflictError
+	if !errors.As(err, &conflict) || conflict.Reason != "branch already has an active writer" {
+		t.Fatalf("expected branch conflict, got %v", err)
+	}
+}
+
 func TestConcurrentClaimsHaveOneWinner(t *testing.T) {
 	root, _ := testWorktrees(t)
 	start := make(chan struct{})

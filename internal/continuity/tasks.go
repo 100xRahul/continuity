@@ -1,6 +1,7 @@
 package continuity
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
 	"sort"
@@ -162,6 +163,36 @@ func ReadyTasks(content string) ([]Task, error) {
 		}
 	}
 	return ready, nil
+}
+
+// AddTask appends one queued task after validating its syntax, dependencies,
+// and uniqueness against the existing Ready Queue.
+func AddTask(content string, task Task) (string, error) {
+	if task.Status != "" && task.Status != " " {
+		return "", errors.New("new tasks must begin queued")
+	}
+	depends := "none"
+	if len(task.DependsOn) > 0 {
+		depends = strings.Join(task.DependsOn, ", ")
+	}
+	autonomous := "no"
+	if task.Autonomous {
+		autonomous = "yes"
+	}
+	line := fmt.Sprintf("- [ ] %s | %s | depends: %s | autonomous: %s | accepts: %s", task.ID, task.Title, depends, autonomous, task.Acceptance)
+	candidate := strings.TrimSpace(content)
+	if candidate != "" {
+		candidate += "\n" + line
+	} else {
+		candidate = line
+	}
+	if _, err := ParseTasks(candidate); err != nil {
+		return "", err
+	}
+	if issues := AnalyzeTasks(candidate); len(issues) > 0 {
+		return "", errors.New(strings.Join(issues, "; "))
+	}
+	return candidate, nil
 }
 
 func UpdateTaskStatus(content, id, status string) (string, error) {

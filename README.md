@@ -16,9 +16,16 @@ The first answer belongs in a compact committed `PROJECT_STATE.md`. The second b
 | Codex child agents in one parent session | Treat children as read-only in the parent checkout. A child writer needs a separate worktree and claim. |
 | Same task in two worktrees | The second claim is rejected. |
 | Overlapping files/directories | The second claim is rejected even when task IDs differ. |
+| Two active writers on one branch | The second claim is rejected even when worktrees and scopes differ. |
 | Separate laptops/clones | This release does not coordinate them; use a remote claim service/branch or keep one writer. |
 
 Claims are small local records containing task ID, session/owner, worktree, scope, heartbeat, next action, and lease. Every linked Git worktree sees the same records because they live under Git's shared metadata directory rather than inside a branch.
+
+## Optional Worktrunk bridge
+
+[Worktrunk](https://worktrunk.dev/) is optional tooling for creating, switching, merging, and removing Git worktrees. Continuity does not depend on it: plain Git remains the portable baseline.
+
+If you use Worktrunk, review [`.agents/worktrunk/wt.toml.example`](.agents/worktrunk/wt.toml.example) and copy it to `.config/wt.toml`. Its `pre-start` hook prints bounded Continuity orientation and live ownership in each new worktree. It does **not** claim work automatically, because the correct harness owner and narrow edit scope must be explicit. Follow the complete workflow in [`.agents/worktrunk/README.md`](.agents/worktrunk/README.md).
 
 ## Install
 
@@ -68,6 +75,7 @@ continuity check                  validate durable state, task graph, and freshn
 continuity reconcile              list relevant changes since durable synchronization
 continuity sync                   refresh durable Git facts after reconciliation
 continuity ready                  list unclaimed autonomous ready tasks
+continuity task add               add one explicitly user-approved task before any claim exists
 continuity start                  atomically claim a task/worktree/scope
 continuity heartbeat              refresh an owned claim lease
 continuity checkpoint             save factual in-progress claim state
@@ -84,6 +92,8 @@ Tasks use one fixed line format:
 ```
 
 Only `autonomous: yes` tasks can be claimed by an agent. Missing scope means `.`—the whole repository—and intentionally prevents parallel work.
+
+`continuity task add --approved ...` is the safe planning route for a user-approved task before a worktree has a writer claim. The explicit flag records acknowledgement; it does not let an agent invent product work. A writer claim also requires a named Git branch, and a second active writer on that branch is rejected.
 
 ## State and freshness
 

@@ -40,7 +40,11 @@ func statusCommand(args []string) error {
 			} else {
 				lease = "expires " + claim.LeaseExpires.Format(time.RFC3339)
 			}
-			fmt.Printf("- %s | owner: %s | worktree: %s | scope: %s | %s\n", claim.TaskID, claim.Owner, claim.Worktree, strings.Join(claim.Scope, ","), lease)
+			branch := claim.Branch
+			if branch == "" {
+				branch = "detached/unknown"
+			}
+			fmt.Printf("- %s | owner: %s | branch: %s | worktree: %s | scope: %s | %s\n", claim.TaskID, claim.Owner, branch, claim.Worktree, strings.Join(claim.Scope, ","), lease)
 			if claim.NextAction != "" {
 				fmt.Println("  next:", claim.NextAction)
 			}
@@ -234,7 +238,11 @@ func compactContext(root, owner string, limit int, requestedScopes []string) (st
 	if len(otherClaims) > 0 {
 		builder.WriteString("Other active work:\n")
 		for _, claim := range otherClaims {
-			fmt.Fprintf(&builder, "- %s owned by %s; scope %s\n", claim.TaskID, claim.Owner, strings.Join(claim.Scope, ","))
+			branch := claim.Branch
+			if branch == "" {
+				branch = "detached/unknown"
+			}
+			fmt.Fprintf(&builder, "- %s owned by %s on %s; scope %s\n", claim.TaskID, claim.Owner, branch, strings.Join(claim.Scope, ","))
 		}
 	}
 	if len(completions) > 0 {
@@ -558,7 +566,7 @@ func isContinuityCommand(command string) bool {
 
 func isContinuityLifecycleVerb(value string) bool {
 	switch value {
-	case "brief", "check", "context", "finalize", "heartbeat", "integrate", "ready", "reconcile", "recover-lock", "release", "start", "status":
+	case "brief", "check", "context", "finalize", "heartbeat", "integrate", "ready", "reconcile", "recover-lock", "release", "start", "status", "task":
 		return true
 	default:
 		return false

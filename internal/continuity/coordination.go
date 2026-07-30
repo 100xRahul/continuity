@@ -164,6 +164,7 @@ func ClaimTask(directory string, request ClaimRequest) (Claim, error) {
 		if !singleLine(request.Owner) || !singleLineOrEmpty(request.Goal) || !singleLineOrEmpty(request.Acceptance) || !singleLineOrEmpty(request.NextAction) || !singleLineOrEmpty(request.Validation) {
 			return errors.New("claim fields must be single-line text")
 		}
+		branch := strings.TrimSpace(request.Branch)
 		worktree := ""
 		if request.Worktree == "" {
 			worktree, err = canonicalPath(root)
@@ -196,6 +197,9 @@ func ClaimTask(directory string, request ClaimRequest) (Claim, error) {
 			if samePath(existing.Worktree, worktree) {
 				return &ClaimConflictError{Reason: "worktree already has an active writer", Claim: existing}
 			}
+			if sameBranch(existing.Branch, branch) {
+				return &ClaimConflictError{Reason: "branch already has an active writer", Claim: existing}
+			}
 			if scopesOverlap(existing.Scope, scope) {
 				return &ClaimConflictError{Reason: "edit scope overlaps an active claim", Claim: existing}
 			}
@@ -227,7 +231,7 @@ func ClaimTask(directory string, request ClaimRequest) (Claim, error) {
 			TaskID:       request.TaskID,
 			Owner:        request.Owner,
 			Worktree:     worktree,
-			Branch:       request.Branch,
+			Branch:       branch,
 			Scope:        scope,
 			Goal:         request.Goal,
 			Acceptance:   request.Acceptance,
@@ -246,6 +250,12 @@ func ClaimTask(directory string, request ClaimRequest) (Claim, error) {
 		return nil
 	})
 	return created, err
+}
+
+func sameBranch(left, right string) bool {
+	left = strings.TrimSpace(left)
+	right = strings.TrimSpace(right)
+	return left != "" && right != "" && left == right
 }
 
 func HeartbeatClaim(directory, taskID, owner, worktree string) (Claim, error) {

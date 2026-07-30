@@ -19,6 +19,8 @@ func TestCrossHarnessAdaptersPointToSharedProtocol(t *testing.T) {
 		".codex/hooks/continuity.sh":                 {"codex-hook", "continuity"},
 		"opencode.json":                              {"AGENTS.md"},
 		".agents/skills/project-continuity/SKILL.md": {"name: project-continuity", "continuity context", "continuity integrate"},
+		".agents/worktrunk/README.md":                {"Worktrunk", "continuity start", "each writer"},
+		".agents/worktrunk/wt.toml.example":          {"[pre-start]", "continuity context", "continuity status"},
 	}
 	for relative, fragments := range required {
 		contents, err := os.ReadFile(filepath.Join(root, relative))
@@ -68,6 +70,8 @@ func TestInstallAdaptersPreservesExistingInstructions(t *testing.T) {
 		".codex/hooks/continuity.sh",
 		"opencode.json",
 		".agents/skills/project-continuity/SKILL.md",
+		".agents/worktrunk/README.md",
+		".agents/worktrunk/wt.toml.example",
 	} {
 		if _, err := os.Stat(filepath.Join(root, path)); err != nil {
 			t.Errorf("adapter %s was not installed: %v", path, err)

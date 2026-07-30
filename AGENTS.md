@@ -20,8 +20,10 @@ Treat harness memory and chat history as disposable conveniences, not authority.
 - Codex child agents in one parent session are read-only in that parent checkout. Their hook identity is the parent session, so a child that needs to write must receive a separate Git worktree and an independent claim.
 - Before any code edit, claim one explicit autonomous task: `continuity start --id T-001 --owner <harness:session-id> ... --scope path/to/area`. Codex may use `--session` as a convenience alias.
 - A claim is exclusive by task ID, worktree, and overlapping path scope. An omitted scope means the whole repository and intentionally prevents parallel work.
-- Different writers require different worktrees, different approved tasks, and non-overlapping scopes. They must not share a branch or directly edit the committed project index while working.
+- Different writers require different worktrees, different branches, different approved tasks, and non-overlapping scopes. The CLI rejects a second active writer claim on the same named branch. They must not directly edit the committed project index while working.
 - Use `continuity heartbeat` or a checkpoint after material progress. Release only your own claim; recover a stale claim explicitly after inspecting `continuity status`.
+
+When a user has approved a new task but no task is queued yet, use `continuity task add --approved ...` from an unclaimed integration worktree. This is the only pre-claim planning route; it does not authorize agents to invent product work. Worktrunk users may opt into `.agents/worktrunk/wt.toml.example` for new-worktree orientation, but claims remain explicit.
 
 ## Complete safely
 

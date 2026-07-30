@@ -31,3 +31,20 @@ func TestAnalyzeTasksFindsCycles(t *testing.T) {
 		t.Fatalf("expected cycle warning, got %v", warnings)
 	}
 }
+
+func TestAddTaskRequiresValidUniqueDependencies(t *testing.T) {
+	queue := "- [x] T-001 | completed | depends: none | autonomous: yes | accepts: completed"
+	updated, err := AddTask(queue, Task{ID: "T-002", Title: "next work", DependsOn: []string{"T-001"}, Autonomous: true, Acceptance: "focused tests pass"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(updated, "T-002") {
+		t.Fatalf("new task missing from queue: %q", updated)
+	}
+	if _, err := AddTask(updated, Task{ID: "T-002", Title: "duplicate", Autonomous: true, Acceptance: "must fail"}); err == nil || !strings.Contains(err.Error(), "duplicate task ID") {
+		t.Fatalf("duplicate task was accepted: %v", err)
+	}
+	if _, err := AddTask(updated, Task{ID: "T-003", Title: "unknown dependency", DependsOn: []string{"T-404"}, Autonomous: true, Acceptance: "must fail"}); err == nil || !strings.Contains(err.Error(), "unknown task") {
+		t.Fatalf("unknown dependency was accepted: %v", err)
+	}
+}

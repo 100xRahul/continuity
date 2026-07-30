@@ -17,7 +17,7 @@ Use the committed project index for durable meaning and the live local claim boa
 
 ## Execute
 
-Before editing, run `continuity start` with a stable harness owner ID and a narrow repository-relative `--scope`. One worktree has one writer; claims also reject duplicate tasks and overlapping scopes in separate worktrees.
+Before editing, run `continuity start` with a stable harness owner ID and a narrow repository-relative `--scope`. One worktree and one named branch have one writer; claims reject duplicate tasks, shared branches, and overlapping scopes in separate worktrees. If a user has approved a new task before any claim exists, use `continuity task add --approved ...` from the unclaimed integration worktree; never invent product work.
 
 Honor the task contract. Checkpoint material progress, validation, or blockers with `continuity checkpoint`. Do not edit `PROJECT_STATE.md` as a live scratchpad; active progress belongs to the claim record.
 
@@ -26,3 +26,5 @@ Honor the task contract. Checkpoint material progress, validation, or blockers w
 Run focused validation, commit the worker result, then finalize with the commit and factual evidence. A completion remains pending until its commit is present in the integration checkout. After merge or handoff, run `continuity integrate --id <task>` to update the durable index and unblock dependencies.
 
 Keep context bounded: use `continuity context --scope <task path>` first, then read only the matching Context Capsules, relevant state section, and mapped code. The durable index may hold approximately 30k tokens; routine startup must not load it wholesale. Read [state-schema.md](references/state-schema.md) when changing state structure or resolving ownership, freshness, or integration questions.
+
+Worktrunk is optional. Its reviewed orientation hook template and parallel-worker workflow live in [../../worktrunk/README.md](../../worktrunk/README.md); plain Git remains the required baseline.

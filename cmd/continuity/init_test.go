@@ -22,6 +22,8 @@ func TestInitCreatesFreshScaffoldedRepository(t *testing.T) {
 		".cursor/rules/project-continuity.mdc",
 		".codex/hooks.json",
 		".codex/hooks/continuity.sh",
+		".agents/worktrunk/README.md",
+		".agents/worktrunk/wt.toml.example",
 		"opencode.json",
 	} {
 		if _, err := os.Stat(filepath.Join(root, path)); err != nil {

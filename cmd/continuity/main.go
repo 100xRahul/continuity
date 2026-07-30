@@ -33,6 +33,8 @@ func main() {
 		err = syncCommand(os.Args[2:])
 	case "ready":
 		err = readyCommand(os.Args[2:])
+	case "task":
+		err = taskCommand(os.Args[2:])
 	case "status":
 		err = statusCommand(os.Args[2:])
 	case "context":
@@ -79,6 +81,7 @@ Usage:
   continuity reconcile [--repo .]
   continuity sync [--repo .]
   continuity ready [--repo .]
+  continuity task add --approved --id T-001 --title text --accepts text [--depends none] [--autonomous yes|no] [--repo .]
   continuity status [--repo .]
   continuity context [--session codex-session-id|--owner harness:id] [--scope path,...] [--limit bytes] [--repo .]
   continuity heartbeat [--id T-001] --session id [--repo .]
@@ -354,6 +357,87 @@ func readyCommand(args []string) error {
 	return nil
 }
 
+// taskCommand provides the explicit, user-approved planning route that is
+// safe before a worktree has a writer claim. It intentionally does not infer
+// product work: callers must acknowledge approval with --approved.
+func taskCommand(args []string) error {
+	if len(args) == 0 || args[0] != "add" {
+		return errors.New("usage: continuity task add --approved --id T-001 --title text --accepts text")
+	}
+	return taskAddCommand(args[1:])
+}
+
+func taskAddCommand(args []string) error {
+	flags := flag.NewFlagSet("task add", flag.ContinueOnError)
+	flags.SetOutput(os.Stderr)
+	repo := flags.String("repo", ".", "repository path")
+	id := flags.String("id", "", "new task ID")
+	title := flags.String("title", "", "user-approved task title")
+	depends := flags.String("depends", "none", "comma-separated prerequisite task IDs or none")
+	autonomous := flags.String("autonomous", "yes", "whether an agent may claim the task: yes or no")
+	acceptance := flags.String("accepts", "", "observable completion criteria")
+	approved := flags.Bool("approved", false, "confirm that a user approved this task")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	if !*approved {
+		return errors.New("--approved is required; Continuity cannot infer a new product task")
+	}
+	if *autonomous != "yes" && *autonomous != "no" {
+		return errors.New("--autonomous must be yes or no")
+	}
+	if err := requireSingleLine(map[string]string{
+		"--id":      *id,
+		"--title":   *title,
+		"--depends": *depends,
+		"--accepts": *acceptance,
+	}); err != nil {
+		return err
+	}
+	root, err := repoRoot(*repo)
+	if err != nil {
+		return err
+	}
+	if err := continuity.WithCoordinationLock(root, func() error {
+		if claim, err := continuity.FindClaimForWorktree(root); err != nil {
+			return err
+		} else if claim != nil {
+			return fmt.Errorf("cannot change the approved task queue while this worktree is claimed by %s for %s", claim.Owner, claim.TaskID)
+		}
+		state, err := loadState(root)
+		if err != nil {
+			return err
+		}
+		if result := state.Validate(continuity.DefaultStateBudget); !result.OK() {
+			return fmt.Errorf("PROJECT_STATE.md is invalid: %s", strings.Join(result.Errors, "; "))
+		}
+		if err := requireFreshState(root, state); err != nil {
+			return err
+		}
+		queue, err := continuity.AddTask(state.Section("Ready Queue"), continuity.Task{
+			ID:         *id,
+			Title:      *title,
+			DependsOn:  parseTaskDependencies(*depends),
+			Autonomous: *autonomous == "yes",
+			Acceptance: *acceptance,
+		})
+		if err != nil {
+			return err
+		}
+		if err := state.ReplaceSection("Ready Queue", queue); err != nil {
+			return err
+		}
+		if err := synchronize(state, root); err != nil {
+			return err
+		}
+		return state.Save()
+	}); err != nil {
+		return err
+	}
+	fmt.Println("added approved task", *id)
+	return nil
+}
+
 func startCommand(args []string) error {
 	flags := flag.NewFlagSet("start", flag.ContinueOnError)
 	flags.SetOutput(os.Stderr)
@@ -431,6 +515,9 @@ func startCommand(args []string) error {
 		claimOwner = defaultOwner()
 	}
 	snapshot := continuity.Snapshot(root)
+	if strings.TrimSpace(snapshot.Branch) == "" {
+		return errors.New("writer claims require a named Git branch; create or switch to a branch before starting work")
+	}
 	claim, err := continuity.ClaimTask(root, continuity.ClaimRequest{
 		TaskID:     *id,
 		Owner:      claimOwner,
@@ -609,6 +696,19 @@ func replaceField(content, field, value string) string {
 		}
 	}
 	return strings.TrimSpace(content) + "\n" + prefix + " " + value
+}
+
+func parseTaskDependencies(value string) []string {
+	if value = strings.TrimSpace(value); value == "" || strings.EqualFold(value, "none") {
+		return nil
+	}
+	dependencies := []string{}
+	for _, item := range strings.Split(value, ",") {
+		if item = strings.TrimSpace(item); item != "" {
+			dependencies = append(dependencies, item)
+		}
+	}
+	return dependencies
 }
 
 func emptyAsNone(value string) string {

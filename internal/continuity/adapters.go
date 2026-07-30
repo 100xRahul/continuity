@@ -30,6 +30,8 @@ func InstallAdapters(root string) (InstallReport, error) {
 		".agents/skills/project-continuity/SKILL.md": skillTemplate,
 		".agents/skills/project-continuity/agents/openai.yaml":         skillMetadataTemplate,
 		".agents/skills/project-continuity/references/state-schema.md": skillSchemaTemplate,
+		".agents/worktrunk/README.md":                                  worktrunkReadmeTemplate,
+		".agents/worktrunk/wt.toml.example":                            worktrunkConfigTemplate,
 	}
 	paths := make([]string, 0, len(files))
 	for path := range files {
@@ -105,7 +107,7 @@ This repository uses a bounded committed project index plus a local live coordin
 
 Before non-trivial work, use the project-continuity skill when available. Run continuity context --owner <harness:session-id> and continuity status; Codex may use --session as a convenience alias. Use an active claim's scope or --scope path/to/area to load only relevant Context Capsules. If another owner holds this worktree, do not edit, revert, or reinterpret its changes; work read-only, wait, or use a separate Git worktree. Codex child agents are read-only in their parent checkout; give a child writer a separate worktree and claim.
 
-Before editing, claim one explicit autonomous task with continuity start and a narrow --scope. One worktree has one writer; claims also reject duplicate tasks and overlapping scopes. Checkpoint material progress or blockers. Commit and finalize with verification evidence, then merge/hand off and use continuity integrate to update PROJECT_STATE.md.
+Before editing, claim one explicit autonomous task with continuity start and a narrow --scope. One worktree and one branch have one writer; claims reject duplicate tasks, shared branches, and overlapping scopes. If a user has approved a task before any claim exists, use continuity task add --approved from the unclaimed integration worktree; agents must not invent work. Checkpoint material progress or blockers. Commit and finalize with verification evidence, then merge/hand off and use continuity integrate to update PROJECT_STATE.md.
 
 Do not change product intent, approved outcomes, or approval boundaries without user direction. Do not invent product features. Stop for destructive actions, production changes, credentials, external spending, security uncertainty, unresolved product choices, repeated blockers, or unexplained failures.
 `
@@ -233,7 +235,7 @@ description: Resume, coordinate, perform, checkpoint, finalize, or integrate non
 
 Run continuity context --owner <harness:session-id> and continuity status; Codex may use --session as a convenience alias. Use --scope to select only relevant Context Capsules from the approximately 30k-token durable index. If another owner holds this worktree, do not edit or reinterpret its changes; work read-only, wait, or use a separate worktree. Codex child agents are read-only in their parent checkout; use a separate worktree and claim for a child writer. If state is stale, run continuity reconcile and inspect only listed changes plus mapped code, then sync durable facts.
 
-Before editing, claim an approved autonomous task with continuity start and a narrow --scope. One worktree has one writer; claims reject duplicate tasks and overlapping scopes. Checkpoint material progress, validation, or blockers. Commit, finalize with verification evidence, then merge/hand off and use continuity integrate before declaring the task durable.
+Before editing, claim an approved autonomous task with continuity start and a narrow --scope. One worktree and one branch have one writer; claims reject duplicate tasks, shared branches, and overlapping scopes. If a user has approved a task before any claim exists, use continuity task add --approved from the unclaimed integration worktree; agents must not invent work. Worktrunk users may opt into .agents/worktrunk/wt.toml.example for new-worktree orientation. Commit, finalize with verification evidence, then merge/hand off and use continuity integrate before declaring the task durable.
 
 Do not replace code inspection with state prose, store raw chats or reasoning, change user-owned product direction, or invent features. Read references/state-schema.md when changing state structure or resolving ownership, freshness, or integration questions.
 `
@@ -255,4 +257,21 @@ Use task lines in this exact form:
     - [ ] T-001 | Task title | depends: none | autonomous: yes | accepts: Observable completion criteria.
 
 Only autonomous tasks with explicit acceptance criteria can be claimed by a fresh agent. PROJECT_STATE.md stores approximately 30k tokens of bounded durable truth; Context Capsules keep that knowledge path-indexed and continuity context --scope keeps routine prompts selective. Git's local common directory stores live claims, heartbeats, and completions for same-machine worktrees. Use continuity integrate only after the verified worker commit is present in the integration checkout.
+`
+
+const worktrunkReadmeTemplate = `# Optional Worktrunk bridge
+
+Worktrunk manages branches and Git worktrees; Continuity supplies shared project context, task claims, and integration records. Worktrunk is optional: plain-Git Continuity workflows remain supported.
+
+Install continuity on PATH, review wt.toml.example, then copy it to .config/wt.toml if you want Worktrunk to show bounded orientation and live ownership in new worktrees. Open the harness in the new worktree before claiming work, then use its real owner ID. Claims remain explicit because they require that identity and a narrow code scope.
+
+Use one writer, worktree, and branch per task. In each new worktree: run continuity context and status, claim an approved task with continuity start, work and finalize, merge, then run continuity integrate from the integration checkout. A user-approved task can be added from an unclaimed integration worktree with continuity task add --approved; agents must not invent tasks.
+`
+
+const worktrunkConfigTemplate = `# Optional Continuity bridge for Worktrunk.
+# Copy to .config/wt.toml only after continuity is on PATH and this command is reviewed.
+
+[pre-start]
+continuity_context = "continuity context --scope . --limit 1800"
+continuity_status = "continuity status"
 `

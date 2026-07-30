@@ -109,6 +109,39 @@ func TestStartRejectsNonAutonomousTask(t *testing.T) {
 	}
 }
 
+func TestTaskAddBootstrapsApprovedWorkWithoutAClaim(t *testing.T) {
+	root := t.TempDir()
+	if _, err := continuity.EnsureGitRepo(root); err != nil {
+		t.Fatal(err)
+	}
+	fingerprint, err := continuity.Fingerprint(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := continuity.NewTemplate(filepath.Join(root, continuity.StateFilename), "Test", "Test approved planning.", continuity.Snapshot(root), fingerprint)
+	if err := state.Save(); err != nil {
+		t.Fatal(err)
+	}
+	withoutApproval := []string{"add", "--repo", root, "--id", "T-002", "--title", "Approved task", "--accepts", "Tests pass"}
+	if err := taskCommand(withoutApproval); err == nil || !strings.Contains(err.Error(), "--approved") {
+		t.Fatalf("task add without explicit approval was accepted: %v", err)
+	}
+	withApproval := append(withoutApproval, "--approved")
+	if err := taskCommand(withApproval); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := continuity.LoadState(filepath.Join(root, continuity.StateFilename))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(loaded.Section("Ready Queue"), "T-002") {
+		t.Fatalf("approved task was not added: %s", loaded.Section("Ready Queue"))
+	}
+	if err := startCommand([]string{"--repo", root, "--id", "T-002", "--owner", "claude:approved-worker", "--goal", "Approved task", "--acceptance", "Tests pass", "--next-action", "Begin the approved task", "--scope", "internal"}); err != nil {
+		t.Fatalf("approved task could not be claimed: %v", err)
+	}
+}
+
 func TestStartRejectsMultilineStateInjection(t *testing.T) {
 	root := t.TempDir()
 	if _, err := continuity.EnsureGitRepo(root); err != nil {
@@ -187,6 +220,12 @@ func TestCodexBashGuardAllowsInspectionAndBlocksUnownedWrites(t *testing.T) {
 	}
 	if err := guardCodexBash(root, "", "continuity status"); err != nil {
 		t.Fatalf("coordination command was blocked: %v", err)
+	}
+	if err := guardCodexBash(root, "", "continuity task add --approved --id T-002 --title approved --accepts done"); err != nil {
+		t.Fatalf("approved planning command was blocked: %v", err)
+	}
+	if err := guardCodexBash(root, "", "continuity sync"); err == nil {
+		t.Fatal("state-mutating sync was allowed without a claim")
 	}
 	if err := guardCodexBash(root, "codex:new-session", "go build ./..."); err == nil || !strings.Contains(err.Error(), "no active claim") {
 		t.Fatalf("unclaimed write-capable shell command was allowed: %v", err)
