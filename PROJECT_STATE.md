@@ -1,11 +1,11 @@
 ---
 schema: 2
-fingerprint: sha256:32f7a4623978ab05e385490ce68cd8cf796af2c451d00438d8a033939161bbda
+fingerprint: sha256:78abae85e3b594c400b73678fd0b47c6b85ff7a74c235c6946434600cd9d55be
 branch: main
-head: 23ba7b898505f535687b34792ce9ee74ad220047
+head: c2543810461558812ff1aee1e55f6f99e6d3930b
 status: ready
 active_task: none
-updated_at: 2026-07-30T17:58:14Z
+updated_at: 2026-07-30T18:34:30Z
 ---
 
 # Continuity
@@ -46,7 +46,7 @@ Validation: none
 - [x] T-010 | Add structured project intake and approved-plan lifecycle | depends: T-009 | autonomous: yes | accepts: PROJECT_PLAN.md drafts, validation, explicit approval, milestone activation, and plan deltas work through the portable CLI with focused tests.
 - [x] T-011 | Add outcome-linked autonomous task graph | depends: T-010 | autonomous: yes | accepts: Tasks require active approved outcomes and focused contracts, and agents can choose and claim valid ready work with recorded rationale.
 - [x] T-012 | Add automatic change capsules and context archives | depends: T-011 | autonomous: yes | accepts: Integration derives evidence-backed task capsules, projects relevant context, and archives completed milestone history without bloating active prompts.
-- [ ] T-013 | Add policy gates and source-linked fact aging | depends: T-012 | autonomous: yes | accepts: Configured scoped policy checks gate verification, affected facts refresh automatically, and meaningful stalls raise durable blocker cards.
+- [x] T-013 | Add policy gates and source-linked fact aging | depends: T-012 | autonomous: yes | accepts: Configured scoped policy checks gate verification, affected facts refresh automatically, and meaningful stalls raise durable blocker cards.
 ## Active Decisions
 
 - D-001 — Keep committed durable project knowledge in `PROJECT_STATE.md`; Git is the archive. Keep short-lived same-machine ownership outside that file. Why: a bounded current projection avoids both vendor lock-in and transcript bloat without turning progress pings into merge conflicts. Evidence: `internal/continuity/state.go`, `internal/continuity/coordination.go`.
@@ -62,6 +62,13 @@ Validation: none
 - D-011 — Keep detailed roadmap authority in `PROJECT_PLAN.md` and a compact active projection in `PROJECT_STATE.md`. Why: plan-level approval and richer delivery context must survive harness changes without bloating ordinary task startup. Evidence: `internal/continuity/plan.go`, `cmd/continuity/plan.go`.
 - D-012 — Bind each executable planned task to an active approved outcome, a contained edit scope, a validation command, and a compact derivation or selection reason. Why: agents can decompose approved technical work without inventing product scope, while a fresh harness can choose the next task from durable evidence instead of rereading code or chat. Evidence: `internal/continuity/tasks.go`, `cmd/continuity/main.go`, `cmd/continuity/plan.go`.
 - D-013 — Derive compact change handoffs from the claimed Git range at integration time, preserve their full evidence in committed history, and retain only the latest three path-scoped change capsules in active state. Why: later sessions can resume from factual intent, paths, validation, and next work without replaying code discovery, while old detail stays available without bloating routine context. Evidence: `cmd/continuity/history.go`, `cmd/continuity/coordination.go`, `internal/continuity/git.go`.
+- D-014 — Treat source-linked facts, durable blockers, and explicitly user-approved policy checks as portable evidence gates. Why: agents need a shared way to stop on changed assumptions or exhausted hypotheses without relying on a harness's private memory or silently expanding autonomy. Evidence: `cmd/continuity/governance.go`, `cmd/continuity/policy.go`, `internal/continuity/facts.go`.
+
+## Fact Cards
+
+- [fresh] F-001 | source: D-014 | paths: cmd/continuity/governance.go, cmd/continuity/policy.go, internal/continuity/facts.go | verified: 2026-07-30T18:34:30Z | evidence: T-013 automated checks and portable CLI smoke passed. | summary: Evidence gates are implemented through committed Markdown and the portable CLI.
+
+## Blocker Cards
 
 ## Constraints and Approval Boundaries
 
@@ -69,6 +76,7 @@ Validation: none
 - Request approval for destructive actions, production changes, credentials, paid services, or unresolved product choices.
 - Do not require one vendor's hooks, memory, plugin, MCP support, or cloud service for correct continuation.
 - Keep the state current and bounded; do not store raw chats, reasoning traces, or pasted source code.
+- Require explicit user approval before adding an executable policy command to `CONTINUITY_POLICY.md`.
 
 ## Code Map
 
@@ -80,6 +88,7 @@ Validation: none
 - Coordination store — `internal/continuity/coordination.go` — common-Git-directory claims, heartbeats, branch and scope exclusion, pending completions, and explicit stale recovery.
 - Task graph — `internal/continuity/tasks.go`, `cmd/continuity/main.go` — legacy and outcome-bound task contracts, scope/validation enforcement, derived technical task records, dependency readiness, and evidence-ranked next-task selection.
 - Delivery plan — `internal/continuity/plan.go`, `cmd/continuity/plan.go` — structured Markdown roadmap, sources, outcomes, decisions, explicit approval, evidence-backed outcome completion, milestone archiving, and plan deltas.
+- Evidence gates — `internal/continuity/facts.go`, `internal/continuity/policy.go`, `cmd/continuity/governance.go`, `cmd/continuity/policy.go` — source-linked fact aging, durable blocker cards, explicitly approved scoped finalization checks, and gate-aware handoffs.
 - Adapter installer — `internal/continuity/adapters.go` — non-overwriting protocol, skill, harness adapters, and optional Worktrunk bridge scaffolding for new repositories.
 - Codex adapter — `.codex/hooks.json`, `.codex/hooks/continuity.sh` — optional session context and pre-write guardrails after project trust.
 - Tests — `internal/continuity/*_test.go` — state round trip, fingerprint exclusions, task readiness, and cycles.
@@ -111,6 +120,11 @@ Summary: A draft plan captures distilled project facts; explicit user approval a
 Details: Interview the user one decision at a time only where repository inspection cannot answer. Record compact sources, assumptions, and decision cards instead of raw chat. High-impact unresolved decisions affecting the milestone block approval. Keep later roadmap work visible but non-executable until activation.
 After approval, an implementation task must name an active outcome, remain within its scope, and carry focused validation. `continuity ready` presents priority and direct-unblocking evidence; the claimant records why it selected that task. A derived technical task is allowed only from an unclaimed integration checkout and is committed immediately. When all linked tasks are integrated, `plan outcome complete` commits its verification receipt; activating a later milestone snapshots the completed outcome set under `PROJECT_HISTORY/`.
 
+### Evidence gates
+Paths: .agents/skills/project-continuity, AGENTS.md, README.md, cmd/continuity, internal/continuity
+Summary: Facts, blockers, and policies make changing evidence or stalled work visible across harnesses without relying on chat memory.
+Details: A Fact Card names its source paths and becomes stale, never silently rewritten, when those paths change during synchronization, plan or policy update, or integration. Overlapping work waits for an explicit `fact confirm` review receipt. A Blocker Card records a falsifiable hypothesis, evidence, and next action; repeat attempts need new evidence or a new hypothesis. `CONTINUITY_POLICY.md` contains only explicitly user-approved scoped checks, which run before finalization and checkpoint rather than complete on failure.
+
 ### Change T-012
 Paths: .agents/skills/project-continuity, .agents/skills/project-continuity/references, AGENTS.md, README.md, cmd/continuity, internal/continuity
 Summary: Intent: Add automatic change capsules and context archives | Result: Added evidence-backed change capsules, archives, and outcome history.
@@ -119,6 +133,15 @@ Changed paths: .agents/skills/project-continuity/SKILL.md, .agents/skills/projec
 Validation: go test ./... -count=1: pass; go test -race ./... -count=1: pass; go vet ./...: pass
 Next: T-013 — Add policy gates and source-linked fact aging
 Archive: PROJECT_HISTORY/changes/T-012.md
+
+### Change T-013
+Paths: .agents/skills/project-continuity, .agents/skills/project-continuity/references, AGENTS.md, README.md, cmd/continuity, internal/continuity
+Summary: Intent: Add policy gates and source-linked fact aging | Result: Added portable policy gates, fact aging, and durable blockers.
+Details: Commit: c2543810461558812ff1aee1e55f6f99e6d3930b
+Changed paths: .agents/skills/project-continuity/SKILL.md, .agents/skills/project-continuity/references/governance-schema.md, .agents/skills/project-continuity/references/state-schema.md, AGENTS.md, README.md, cmd/continuity/coordination.go, cmd/continuity/governance.go, cmd/continuity/governance_test.go (+14 more)
+Validation: go test ./... -count=1: pass; go test -race ./... -count=1: pass; go vet ./...: pass
+Next: No unclaimed autonomous task is ready.
+Archive: PROJECT_HISTORY/changes/T-013.md
 ## Known Pitfalls and Failed Approaches
 
 - Record only failures that remain relevant. Include the failed approach, evidence, resolution, and affected paths.
@@ -135,8 +158,15 @@ Archive: PROJECT_HISTORY/changes/T-012.md
 - Do not seed a reusable task ID into a fresh draft queue. The placeholder `T-001` collided with the first natural real task; keep the queue empty until the approved plan supplies a real contract. Evidence: `internal/continuity/state.go`, `cmd/continuity/taskgraph_test.go`.
 - Do not make a new session rediscover a completed claim from its code diff. Integration must retain claimed-range paths, task intent, validation evidence, and the selected next action in a short capsule plus `PROJECT_HISTORY/changes/` archive. Evidence: `cmd/continuity/history.go`, `cmd/continuity/main_test.go`.
 - Do not derive another task merely because a completed active outcome has no ready task. Verify its acceptance and record `plan outcome complete`; the command refuses while any linked task remains unintegrated. Evidence: `cmd/continuity/history.go`, `cmd/continuity/plan.go`, `cmd/continuity/plan_test.go`.
+- Do not silently refresh a fact after its named source changes or retry a stalled task with the same evidence. Synchronize to mark affected facts stale, explicitly confirm review evidence, and resolve blockers only with new evidence or a new hypothesis. Evidence: `cmd/continuity/governance.go`, `internal/continuity/facts.go`.
+- Do not let an ignored fingerprint path bypass fact aging. Claim and check flows separately inspect changed source-linked paths, including project instructions such as `README.md`. Evidence: `cmd/continuity/main.go`, `cmd/continuity/governance_test.go`.
 
 ## Verification
+- governance CLI smoke: pass
+- sh -n .codex/hooks/continuity.sh: pass
+- go vet ./...: pass
+- go test -race ./... -count=1: pass
+- go test ./... -count=1: pass
 - fresh change-history lifecycle smoke: pass
 - sh -n .codex/hooks/continuity.sh: pass
 - go vet ./...: pass
@@ -161,6 +191,7 @@ Archive: PROJECT_HISTORY/changes/T-012.md
 - `continuity sync` preserves active task state while refreshing Git metadata — pass.
 - T-008 focused tests, `go test ./... -count=1`, `go test -race ./... -count=1`, `go vet ./...`, and `git diff --check` — pass; a fresh-repository smoke test verified optional Worktrunk templates plus explicit task bootstrap and named-branch claiming.
 ## Recent Material Changes
+- Integrated T-013 at c2543810461558812ff1aee1e55f6f99e6d3930b: Added portable policy gates, fact aging, and durable blockers.
 - Integrated T-012 at 23ba7b898505f535687b34792ce9ee74ad220047: Added evidence-backed change capsules, archives, and outcome history.
 - Integrated T-011 at b5aa35e6fade25fda72db7dead201dcc859843c6: Added outcome-bound task contracts, evidence-ranked ready work, derived technical task receipts, and selection rationale.
 - Integrated T-010 at 9e45630ac944af7223a07ba192a04f0532e47594: Added structured project-plan intake, explicit approval receipts, milestone activation, plan deltas, and scoped startup projection.
@@ -177,5 +208,5 @@ Archive: PROJECT_HISTORY/changes/T-012.md
 - Added initial portable state engine, task graph, and unit tests.
 - Added adapter scaffolding to `continuity init` with preservation checks for existing instructions.
 ## Handoff
-Last completed: T-012 — Added evidence-backed change capsules, archives, and outcome history.
-Immediate restart action: Run continuity context --scope . and claim T-013 with continuity start.
+Last completed: T-013 — Added portable policy gates, fact aging, and durable blockers.
+Immediate restart action: Run continuity ready and wait for user-approved work before changing product scope.
