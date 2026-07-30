@@ -1,6 +1,6 @@
 # State schema
 
-`PROJECT_STATE.md` is a bounded, committed project projection. It is not a live multi-agent scratchpad.
+`PROJECT_STATE.md` is a bounded, committed operational projection. `PROJECT_PLAN.md` is the detailed delivery contract; this file keeps only its current executable projection. Neither document is a live multi-agent scratchpad.
 
 Required front matter:
 

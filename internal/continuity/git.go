@@ -238,6 +238,36 @@ func CommitIsAncestor(directory, revision string) (bool, error) {
 	return false, fmt.Errorf("git merge-base --is-ancestor %s HEAD: %s", revision, strings.TrimSpace(stderr.String()))
 }
 
+// CommitFiles records a small, explicitly approved metadata change immediately
+// so another harness can rely on it without waiting for an unrelated worker
+// commit. Callers must save every requested file before invoking it.
+func CommitFiles(directory, message string, files ...string) (string, error) {
+	if strings.TrimSpace(message) == "" {
+		return "", errors.New("commit message is required")
+	}
+	if len(files) == 0 {
+		return "", errors.New("at least one file is required")
+	}
+	args := append([]string{"add", "--"}, files...)
+	if _, err := git(directory, args...); err != nil {
+		return "", err
+	}
+	if _, err := git(directory, "commit", "-m", message); err != nil {
+		return "", err
+	}
+	return ResolveCommit(directory, "HEAD")
+}
+
+// EnsureCommitIdentity verifies that Git can create the approval receipt before
+// Continuity mutates a plan. It prevents a half-completed approval caused by a
+// missing author identity.
+func EnsureCommitIdentity(directory string) error {
+	if _, err := git(directory, "var", "GIT_AUTHOR_IDENT"); err != nil {
+		return fmt.Errorf("Git commit identity is required: %w", err)
+	}
+	return nil
+}
+
 func ChangedSinceState(directory string) ([]string, error) {
 	commit := LastStateCommit(directory)
 	if commit == "" {

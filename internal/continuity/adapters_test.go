@@ -10,7 +10,7 @@ import (
 func TestCrossHarnessAdaptersPointToSharedProtocol(t *testing.T) {
 	root := moduleRoot(t)
 	required := map[string][]string{
-		"AGENTS.md":                                  {"PROJECT_STATE.md", "continuity context", "continuity start", "one writer"},
+		"AGENTS.md":                                  {"PROJECT_PLAN.md", "PROJECT_STATE.md", "continuity context", "continuity start", "one writer"},
 		"CLAUDE.md":                                  {"AGENTS.md", "PROJECT_STATE.md"},
 		"GEMINI.md":                                  {"AGENTS.md", "PROJECT_STATE.md"},
 		".github/copilot-instructions.md":            {"@AGENTS.md", "project-continuity"},
@@ -18,9 +18,10 @@ func TestCrossHarnessAdaptersPointToSharedProtocol(t *testing.T) {
 		".codex/hooks.json":                          {"SessionStart", "SubagentStart", "UserPromptSubmit", "PreToolUse", "continuity.sh"},
 		".codex/hooks/continuity.sh":                 {"codex-hook", "continuity"},
 		"opencode.json":                              {"AGENTS.md"},
-		".agents/skills/project-continuity/SKILL.md": {"name: project-continuity", "continuity context", "continuity integrate"},
-		".agents/worktrunk/README.md":                {"Worktrunk", "continuity start", "each writer"},
-		".agents/worktrunk/wt.toml.example":          {"[pre-start]", "continuity context", "continuity status"},
+		".agents/skills/project-continuity/SKILL.md": {"name: project-continuity", "PROJECT_PLAN.md", "continuity context", "continuity integrate"},
+		".agents/skills/project-continuity/references/plan-schema.md": {"PROJECT_PLAN.md", "active_milestone", "plan approve"},
+		".agents/worktrunk/README.md":                                 {"Worktrunk", "continuity start", "each writer"},
+		".agents/worktrunk/wt.toml.example":                           {"[pre-start]", "continuity context", "continuity status"},
 	}
 	for relative, fragments := range required {
 		contents, err := os.ReadFile(filepath.Join(root, relative))
@@ -70,6 +71,7 @@ func TestInstallAdaptersPreservesExistingInstructions(t *testing.T) {
 		".codex/hooks/continuity.sh",
 		"opencode.json",
 		".agents/skills/project-continuity/SKILL.md",
+		".agents/skills/project-continuity/references/plan-schema.md",
 		".agents/worktrunk/README.md",
 		".agents/worktrunk/wt.toml.example",
 	} {

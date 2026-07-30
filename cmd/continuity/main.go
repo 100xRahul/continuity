@@ -35,6 +35,8 @@ func main() {
 		err = readyCommand(os.Args[2:])
 	case "task":
 		err = taskCommand(os.Args[2:])
+	case "plan":
+		err = planCommand(os.Args[2:])
 	case "status":
 		err = statusCommand(os.Args[2:])
 	case "context":
@@ -82,6 +84,13 @@ Usage:
   continuity sync [--repo .]
   continuity ready [--repo .]
   continuity task add --approved --id T-001 --title text --accepts text [--depends none] [--autonomous yes|no] [--repo .]
+  continuity plan init --intent text [--project name] [--repo .]
+  continuity plan validate|status [--repo .]
+  continuity plan approve --approved --milestone M-001 [--repo .]
+  continuity plan activate --approved --milestone M-002 [--repo .]
+  continuity plan milestone|outcome|source|constraint|assumption add ... [--repo .]
+  continuity plan decision add|resolve ... [--repo .]
+  continuity plan delta add|approve ... [--repo .]
   continuity status [--repo .]
   continuity context [--session codex-session-id|--owner harness:id] [--scope path,...] [--limit bytes] [--repo .]
   continuity heartbeat [--id T-001] --session id [--repo .]
@@ -119,7 +128,24 @@ func initCommand(args []string) error {
 	if err != nil {
 		return err
 	}
+	planPath := continuity.PlanPath(root)
+	if _, err := os.Stat(planPath); err == nil {
+		return fmt.Errorf("%s already exists", continuity.PlanFilename)
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	plan := continuity.NewPlan(planPath, *project, *objective)
+	if err := plan.Save(); err != nil {
+		return err
+	}
+	fingerprint, err = continuity.Fingerprint(root)
+	if err != nil {
+		return err
+	}
 	state := continuity.NewTemplate(path, *project, *objective, continuity.Snapshot(root), fingerprint)
+	state.SetMeta("plan", continuity.PlanFilename)
+	state.SetMeta("plan_status", "draft")
+	state.SetMeta("plan_active_milestone", "none")
 	if err := state.Save(); err != nil {
 		return err
 	}
@@ -188,6 +214,23 @@ func checkCommand(args []string) error {
 		return err
 	}
 	result := state.Validate(*budget)
+	if plan, planErr := loadOptionalPlan(root); planErr != nil {
+		result.Errorf("delivery plan: %v", planErr)
+	} else if plan != nil {
+		planResult := plan.Validate()
+		for _, warning := range planResult.Warnings {
+			result.Warnf("delivery plan: %s", warning)
+		}
+		for _, issue := range planResult.Errors {
+			result.Errorf("delivery plan: %s", issue)
+		}
+		if state.Meta["plan_status"] != "" && state.Meta["plan_status"] != plan.Meta["status"] {
+			result.Errorf("delivery plan status %q does not match PROJECT_STATE.md projection %q", plan.Meta["status"], state.Meta["plan_status"])
+		}
+		if state.Meta["plan_active_milestone"] != "" && state.Meta["plan_active_milestone"] != plan.Meta["active_milestone"] {
+			result.Errorf("delivery plan active milestone %q does not match PROJECT_STATE.md projection %q", plan.Meta["active_milestone"], state.Meta["plan_active_milestone"])
+		}
+	}
 	snapshot := continuity.Snapshot(root)
 	fingerprint, err := continuity.Fingerprint(root)
 	if err != nil {

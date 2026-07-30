@@ -227,6 +227,12 @@ func TestCodexBashGuardAllowsInspectionAndBlocksUnownedWrites(t *testing.T) {
 	if err := guardCodexBash(root, "", "continuity task add --approved --id T-002 --title approved --accepts done"); err != nil {
 		t.Fatalf("approved planning command was blocked: %v", err)
 	}
+	if err := guardCodexBash(root, "", "continuity plan status"); err != nil {
+		t.Fatalf("plan inspection command was blocked: %v", err)
+	}
+	if err := guardCodexBash(root, "", "continuity plan approve --approved --milestone M-001"); err != nil {
+		t.Fatalf("explicit plan approval command was blocked: %v", err)
+	}
 	if err := guardCodexBash(root, "", "continuity sync"); err == nil {
 		t.Fatal("state-mutating sync was allowed without a claim")
 	}

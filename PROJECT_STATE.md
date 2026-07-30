@@ -1,11 +1,11 @@
 ---
 schema: 2
-fingerprint: sha256:ce995f340c404bd8b42c8983312a4c93893028ddcebe2c220e5ca060f9d1503d
+fingerprint: sha256:a44745020e4d6abdcf01a9e82a63f864928ee19c9d372a95625f4a0060ab45aa
 branch: main
-head: 4dc3561f759d76c358192f53db5d2325e111953f
+head: 6f197cc564dc8c7a9699d282984ca21a0ec78186
 status: ready
 active_task: none
-updated_at: 2026-07-30T15:58:57Z
+updated_at: 2026-07-30T17:02:41Z
 ---
 
 # Continuity
@@ -22,6 +22,7 @@ Build a durable, cross-harness continuity system for AI coding agents.
 - Deliver safe same-machine multi-session coordination: agents must see live task claims before editing, and separate worktrees must not duplicate or silently conflict on work.
 - Scale durable project knowledge to an approximately 30,000-token budget while keeping routine session context selective and compact.
 - Provide an optional Worktrunk bridge for parallel Git worktrees without making Worktrunk a core dependency.
+- Deliver a structured, user-approved project plan that lets agents decompose and continue approved implementation work without inventing product scope.
 
 ## Active Work
 Task: none
@@ -42,6 +43,10 @@ Validation: none
 - [x] T-007 | Add layered 30k-token durable context | depends: T-006 | autonomous: yes | accepts: The portable core supports an approximately 30k-token durable budget, indexed context capsules, bounded scope-based selection, and tests proving startup context stays selective.
 - [x] T-008 | Add optional Worktrunk bridge and branch safety | depends: T-007 | autonomous: yes | accepts: Active writer claims reject a shared branch, and the project provides tested optional Worktrunk hooks or guidance that bootstrap bounded context and claims without requiring Worktrunk.
 - [x] T-009 | Refresh handoff during integration | depends: T-008 | autonomous: yes | accepts: Integration updates the durable handoff with the completed task and a safe next-session action, with focused tests.
+- [ ] T-010 | Add structured project intake and approved-plan lifecycle | depends: T-009 | autonomous: yes | accepts: PROJECT_PLAN.md drafts, validation, explicit approval, milestone activation, and plan deltas work through the portable CLI with focused tests.
+- [ ] T-011 | Add outcome-linked autonomous task graph | depends: T-010 | autonomous: yes | accepts: Tasks require active approved outcomes and focused contracts, and agents can choose and claim valid ready work with recorded rationale.
+- [ ] T-012 | Add automatic change capsules and context archives | depends: T-011 | autonomous: yes | accepts: Integration derives evidence-backed task capsules, projects relevant context, and archives completed milestone history without bloating active prompts.
+- [ ] T-013 | Add policy gates and source-linked fact aging | depends: T-012 | autonomous: yes | accepts: Configured scoped policy checks gate verification, affected facts refresh automatically, and meaningful stalls raise durable blocker cards.
 ## Active Decisions
 
 - D-001 — Keep committed durable project knowledge in `PROJECT_STATE.md`; Git is the archive. Keep short-lived same-machine ownership outside that file. Why: a bounded current projection avoids both vendor lock-in and transcript bloat without turning progress pings into merge conflicts. Evidence: `internal/continuity/state.go`, `internal/continuity/coordination.go`.
@@ -54,6 +59,7 @@ Validation: none
 - D-008 — Permit approximately 30,000 tokens of durable project knowledge, but select context through path-indexed capsules. Why: larger projects need richer accumulated facts, while routine session startup must remain small and relevant. Evidence: `internal/continuity/state.go`, `cmd/continuity/coordination.go`.
 - D-009 — Keep Worktrunk as an optional orientation bridge and require one named branch per live writer. Why: Worktrunk improves Git-worktree ergonomics, but shared context, task ownership, and safety must still work with plain Git and every harness. Evidence: `.agents/worktrunk/`, `cmd/continuity/main.go`, `internal/continuity/coordination.go`.
 - D-010 — Refresh the durable handoff during integration. Why: a completed task is not useful to a fresh session if its restart instruction still names older work. Evidence: `cmd/continuity/coordination.go`.
+- D-011 — Keep detailed roadmap authority in `PROJECT_PLAN.md` and a compact active projection in `PROJECT_STATE.md`. Why: plan-level approval and richer delivery context must survive harness changes without bloating ordinary task startup. Evidence: `internal/continuity/plan.go`, `cmd/continuity/plan.go`.
 
 ## Constraints and Approval Boundaries
 
@@ -70,6 +76,7 @@ Validation: none
 - Git facts — `internal/continuity/git.go` — repository snapshots, source fingerprints, and incremental reconciliation.
 - Coordination store — `internal/continuity/coordination.go` — common-Git-directory claims, heartbeats, branch and scope exclusion, pending completions, and explicit stale recovery.
 - Task graph — `internal/continuity/tasks.go` — task syntax, safe task addition, dependencies, readiness, and cycle detection.
+- Delivery plan — `internal/continuity/plan.go`, `cmd/continuity/plan.go` — structured Markdown roadmap, sources, outcomes, decisions, explicit approval, milestone activation, and plan deltas.
 - Adapter installer — `internal/continuity/adapters.go` — non-overwriting protocol, skill, harness adapters, and optional Worktrunk bridge scaffolding for new repositories.
 - Codex adapter — `.codex/hooks.json`, `.codex/hooks/continuity.sh` — optional session context and pre-write guardrails after project trust.
 - Tests — `internal/continuity/*_test.go` — state round trip, fingerprint exclusions, task readiness, and cycles.
@@ -96,6 +103,11 @@ Paths: cmd/continuity/coordination.go, PROJECT_STATE.md
 Summary: A successful integration makes the durable handoff point to the just-completed task and a safe generic restart action.
 Details: This prevents a fresh session from attempting finished work. Integration remains the only lifecycle step that makes a result durable; it updates task status, verification, recent changes, and handoff together.
 
+### Delivery planning
+Paths: PROJECT_PLAN.md, PROJECT_HISTORY, cmd/continuity/plan.go, internal/continuity/plan.go, AGENTS.md
+Summary: A draft plan captures distilled project facts; explicit user approval activates only the nearest executable milestone.
+Details: Interview the user one decision at a time only where repository inspection cannot answer. Record compact sources, assumptions, and decision cards instead of raw chat. High-impact unresolved decisions affecting the milestone block approval. Keep later roadmap work visible but non-executable until activation.
+
 ## Known Pitfalls and Failed Approaches
 
 - Record only failures that remain relevant. Include the failed approach, evidence, resolution, and affected paths.
@@ -107,6 +119,7 @@ Details: This prevents a fresh session from attempting finished work. Integratio
 - Do not let multiple Codex child agents write one parent checkout. They share the parent's hook session ID; use separate worktrees for independent writers. Evidence: `AGENTS.md`, `.codex/hooks.json`.
 - Do not treat separate paths or worktrees as safe when writers share a named branch. The live claim board rejects a second writer on that branch; create a dedicated branch before claiming work. Evidence: `internal/continuity/coordination.go`, `cmd/continuity/main.go`.
 - Do not leave a completed task's handoff pointing at older work. The integration command updates the task status, evidence, recent changes, and restart instruction together. Evidence: `cmd/continuity/coordination.go`, `cmd/continuity/main_test.go`.
+- Do not treat a plausible draft as product approval. Only `continuity plan approve --approved --milestone ...` records an immediate Git-backed executable boundary; unapproved plan content cannot authorize implementation. Evidence: `cmd/continuity/plan.go`, `cmd/continuity/plan_test.go`.
 - Do not equate the approximately 30k-token durable budget with routine context size. The full index is deliberate-review material; startup and task context must select only project-wide and scope-relevant capsules. Evidence: `cmd/continuity/coordination.go`, `AGENTS.md`.
 
 ## Verification

@@ -30,6 +30,7 @@ func InstallAdapters(root string) (InstallReport, error) {
 		".agents/skills/project-continuity/SKILL.md": skillTemplate,
 		".agents/skills/project-continuity/agents/openai.yaml":         skillMetadataTemplate,
 		".agents/skills/project-continuity/references/state-schema.md": skillSchemaTemplate,
+		".agents/skills/project-continuity/references/plan-schema.md":  planSchemaTemplate,
 		".agents/worktrunk/README.md":                                  worktrunkReadmeTemplate,
 		".agents/worktrunk/wt.toml.example":                            worktrunkConfigTemplate,
 	}
@@ -103,7 +104,9 @@ func (r InstallReport) String() string {
 
 const agentsTemplate = `# Continuity protocol
 
-This repository uses a bounded committed project index plus a local live coordination board. Treat chat history and harness-specific memory as disposable conveniences, not authority.
+This repository uses a detailed committed PROJECT_PLAN.md, a bounded PROJECT_STATE.md operational index, and a local live coordination board. Treat chat history and harness-specific memory as disposable conveniences, not authority.
+
+If PROJECT_PLAN.md is draft, inspect repository facts and interview the user one decision at a time where product judgment is needed. Record compact facts, sources, assumptions, and decision cards; never store raw chat. Do not claim implementation work until the user explicitly approves an active milestone through continuity plan approve --approved --milestone M-001. Product, priority, constraint, and milestone changes become explicit plan deltas.
 
 Before non-trivial work, use the project-continuity skill when available. Run continuity context --owner <harness:session-id> and continuity status; Codex may use --session as a convenience alias. Use an active claim's scope or --scope path/to/area to load only relevant Context Capsules. If another owner holds this worktree, do not edit, revert, or reinterpret its changes; work read-only, wait, or use a separate Git worktree. Codex child agents are read-only in their parent checkout; give a child writer a separate worktree and claim.
 
@@ -233,7 +236,9 @@ description: Resume, coordinate, perform, checkpoint, finalize, or integrate non
 
 # Project continuity
 
-Run continuity context --owner <harness:session-id> and continuity status; Codex may use --session as a convenience alias. Use --scope to select only relevant Context Capsules from the approximately 30k-token durable index. If another owner holds this worktree, do not edit or reinterpret its changes; work read-only, wait, or use a separate worktree. Codex child agents are read-only in their parent checkout; use a separate worktree and claim for a child writer. If state is stale, run continuity reconcile and inspect only listed changes plus mapped code, then sync durable facts.
+Run continuity context --owner <harness:session-id> and continuity status; Codex may use --session as a convenience alias. Use --scope to select only relevant Context Capsules and active plan outcomes from the approximately 30k-token durable index. If another owner holds this worktree, do not edit or reinterpret its changes; work read-only, wait, or use a separate worktree. Codex child agents are read-only in their parent checkout; use a separate worktree and claim for a child writer. If state is stale, run continuity reconcile and inspect only listed changes plus mapped code, then sync durable facts.
+
+When PROJECT_PLAN.md is draft, inspect repository facts and interview the user one decision at a time with a recommendation. Store compact facts, source references, assumptions, and decision cards rather than raw chat. Do not claim implementation work until the user explicitly approves the milestone with continuity plan approve --approved --milestone M-001. Treat later product, priority, constraint, and milestone changes as plan deltas.
 
 Before editing, claim an approved autonomous task with continuity start and a narrow --scope. One worktree and one branch have one writer; claims reject duplicate tasks, shared branches, and overlapping scopes. If a user has approved a task before any claim exists, use continuity task add --approved from the unclaimed integration worktree; agents must not invent work. Worktrunk users may opt into .agents/worktrunk/wt.toml.example for new-worktree orientation. Commit, finalize with verification evidence, then merge/hand off and use continuity integrate before declaring the task durable.
 
@@ -256,7 +261,18 @@ Use task lines in this exact form:
 
     - [ ] T-001 | Task title | depends: none | autonomous: yes | accepts: Observable completion criteria.
 
-Only autonomous tasks with explicit acceptance criteria can be claimed by a fresh agent. PROJECT_STATE.md stores approximately 30k tokens of bounded durable truth; Context Capsules keep that knowledge path-indexed and continuity context --scope keeps routine prompts selective. Git's local common directory stores live claims, heartbeats, and completions for same-machine worktrees. Use continuity integrate only after the verified worker commit is present in the integration checkout.
+Only autonomous tasks with explicit acceptance criteria can be claimed by a fresh agent. PROJECT_PLAN.md is the detailed delivery contract; PROJECT_STATE.md stores approximately 30k tokens of bounded active truth. Context Capsules keep that knowledge path-indexed and continuity context --scope keeps routine prompts selective. Git's local common directory stores live claims, heartbeats, and completions for same-machine worktrees. Use continuity integrate only after the verified worker commit is present in the integration checkout.
+`
+
+const planSchemaTemplate = `# Delivery plan schema
+
+PROJECT_PLAN.md is the committed detailed delivery contract. It has front matter with schema, status, active_milestone, approved_at, and updated_at.
+
+Required sections: Intent, Sources, Milestones, Outcomes, Constraints, Assumptions, Decisions, and Deltas.
+
+The plan is draft until an explicit continuity plan approve --approved --milestone M-001 receipt. A draft is where the agent records compact repository facts and interviews the user one decision at a time; never store raw chat. Only the active milestone becomes executable. High-impact open decisions affecting it block approval.
+
+Milestones group user-visible outcomes. Tasks must later link to an approved active outcome. Product, priority, constraint, and milestone changes use explicit plan deltas. Completed milestone detail belongs in committed PROJECT_HISTORY archives, while PROJECT_STATE.md keeps only a compact active projection.
 `
 
 const worktrunkReadmeTemplate = `# Optional Worktrunk bridge

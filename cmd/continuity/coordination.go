@@ -190,6 +190,15 @@ func compactContext(root, owner string, limit int, requestedScopes []string) (st
 	if err != nil {
 		return "", err
 	}
+	plan, planErr := loadOptionalPlan(root)
+	if planErr != nil {
+		return "", fmt.Errorf("load delivery plan: %w", planErr)
+	}
+	if plan != nil {
+		if result := plan.Validate(); !result.OK() {
+			return "", fmt.Errorf("delivery plan is invalid: %s", strings.Join(result.Errors, "; "))
+		}
+	}
 	claims, err := continuity.ListClaims(root)
 	if err != nil {
 		return "", err
@@ -270,6 +279,10 @@ func compactContext(root, owner string, limit int, requestedScopes []string) (st
 	selectionScopes := requestedScopes
 	if len(selectionScopes) == 0 && current != nil {
 		selectionScopes = current.Scope
+	}
+	if plan != nil {
+		builder.WriteString("\n")
+		builder.WriteString(renderPlanContext(plan, selectionScopes))
 	}
 	capsules, capsuleErr := state.ContextCapsules()
 	if capsuleErr != nil {
@@ -571,7 +584,7 @@ func isContinuityCommand(command string) bool {
 
 func isContinuityLifecycleVerb(value string) bool {
 	switch value {
-	case "brief", "check", "context", "finalize", "heartbeat", "integrate", "ready", "reconcile", "recover-lock", "release", "start", "status", "task":
+	case "brief", "check", "context", "finalize", "heartbeat", "integrate", "plan", "ready", "reconcile", "recover-lock", "release", "start", "status", "task":
 		return true
 	default:
 		return false

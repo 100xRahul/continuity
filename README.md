@@ -5,7 +5,7 @@ Continuity is a local, Git-backed project-memory and coordination system for cod
 - What is this project, what has been approved, why does the code look this way, and what is next?
 - Is another local agent already working on this task, worktree, or code area right now?
 
-The first answer belongs in a compact committed `PROJECT_STATE.md`. The second belongs in a tiny live coordination store under Git's common directory. Separating them is what makes parallel sessions safe without turning the project index into a bloated scratchpad.
+The detailed product roadmap belongs in committed `PROJECT_PLAN.md`; its compact active projection belongs in `PROJECT_STATE.md`. The second answer belongs in a tiny live coordination store under Git's common directory. Separating all three is what makes parallel sessions safe without turning routine prompts into a bloated scratchpad.
 
 ## The rule for multiple sessions
 
@@ -36,7 +36,19 @@ go build -o continuity ./cmd/continuity
 continuity init --project "Example" --objective "The approved outcome."
 ```
 
-Commit `PROJECT_STATE.md`, `AGENTS.md`, `.agents/skills/`, `.codex/hooks.json`, and the source. Do not commit the compiled binary or Git's local coordination store.
+Commit `PROJECT_PLAN.md`, `PROJECT_STATE.md`, `AGENTS.md`, `.agents/skills/`, `.codex/hooks.json`, and the source. Do not commit the compiled binary or Git's local coordination store.
+
+## Project intake
+
+`continuity init` creates a draft `PROJECT_PLAN.md`. The agent inspects repository facts, interviews you one decision at a time where product judgment is required, and records compact outcomes, constraints, assumptions, and decision cards. It does not preserve raw chat.
+
+After you approve the proposed first milestone, the agent records an auditable, immediate Git receipt:
+
+```text
+continuity plan approve --approved --milestone M-001
+```
+
+Only the approved active milestone becomes executable. Later roadmap items remain visible for orientation but cannot silently become agent work.
 
 ## Normal workflow
 
@@ -76,6 +88,7 @@ continuity reconcile              list relevant changes since durable synchroniz
 continuity sync                   refresh durable Git facts after reconciliation
 continuity ready                  list unclaimed autonomous ready tasks
 continuity task add               add one explicitly user-approved task before any claim exists
+continuity plan                   create, validate, approve, activate, and inspect the delivery plan
 continuity start                  atomically claim a task/worktree/scope
 continuity heartbeat              refresh an owned claim lease
 continuity checkpoint             save factual in-progress claim state
@@ -97,7 +110,7 @@ Only `autonomous: yes` tasks can be claimed by an agent. Missing scope means `.`
 
 ## State and freshness
 
-`PROJECT_STATE.md` has a default 120,000-byte budget: approximately 30,000 tokens using a deliberately conservative four-bytes-per-token estimate. This is a durable-storage budget, not an instruction to inject the entire file into every session. It holds current, load-bearing facts rather than a diary: intent, outcomes, decisions, constraints, code map, durable failures, verification, integrated changes, handoff, and indexed context capsules.
+`PROJECT_STATE.md` has a default 120,000-byte budget: approximately 30,000 tokens using a deliberately conservative four-bytes-per-token estimate. This is a durable-storage budget, not an instruction to inject the entire file into every session. It holds current, load-bearing facts rather than a diary. `PROJECT_PLAN.md` holds the detailed roadmap and approval contract; completed milestone detail can move to committed `PROJECT_HISTORY/` archives.
 
 ### Layered context, not 30k-token startup prompts
 

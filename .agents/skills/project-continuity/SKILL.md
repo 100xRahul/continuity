@@ -15,6 +15,12 @@ Use the committed project index for durable meaning and the live local claim boa
 4. If state is stale, run `continuity reconcile`; inspect only listed changes and mapped code. Update durable facts and run `continuity sync` before claiming a task.
 5. Select only an approved, unblocked `autonomous: yes` task with observable acceptance criteria.
 
+## Intake and plan approval
+
+If `PROJECT_PLAN.md` is a draft, inspect the repository and interview the user one decision at a time. Ask only for product choices that cannot be discovered locally, always give a recommendation, and capture compact facts rather than raw chat. Do not claim implementation work until the user explicitly approves the active milestone through `continuity plan approve --approved --milestone M-001`.
+
+If the plan is approved, treat its active milestone and outcomes as the product boundary. Record product, priority, constraint, or milestone changes as plan deltas; do not silently extend scope. Read [plan-schema.md](references/plan-schema.md) before changing plan structure or approval state.
+
 ## Execute
 
 Before editing, run `continuity start` with a stable harness owner ID and a narrow repository-relative `--scope`. One worktree and one named branch have one writer; claims reject duplicate tasks, shared branches, and overlapping scopes in separate worktrees. If a user has approved a new task before any claim exists, use `continuity task add --approved ...` from the unclaimed integration worktree; never invent product work.

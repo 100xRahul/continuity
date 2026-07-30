@@ -564,7 +564,7 @@ func NewTemplate(path, project, objective string, snapshot GitSnapshot, fingerpr
 
 ## Approved Outcomes
 
-- Define approved outcomes here. Agents may decompose approved outcomes into engineering tasks but must not invent product features.
+- Delivery plan draft: PROJECT_PLAN.md. No implementation milestone is executable until the user explicitly approves one.
 
 ## Active Work
 
@@ -613,7 +613,7 @@ Validation: none
 ## Handoff
 
 Last completed: state initialization.
-Immediate restart action: Run %s context and %s status, then claim authorized work in this worktree.
+Immediate restart action: Run %s context and %s status, complete the planning interview, and wait for explicit plan approval before claiming implementation work.
 `, project, objective, defaultContextCapsules, project, "continuity", "continuity")
 	return NewState(path, meta, body)
 }

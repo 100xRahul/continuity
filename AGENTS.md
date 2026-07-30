@@ -1,11 +1,20 @@
 # Continuity protocol
 
-This repository has two complementary memories:
+This repository has three complementary memories:
 
-- `PROJECT_STATE.md` is the compact, committed project index: intent, approvals, decisions, code map, durable failures, and integrated work.
+- `PROJECT_PLAN.md` is the detailed, committed delivery contract: roadmap milestones, user-visible outcomes, inferred source authority, constraints, assumptions, decision cards, and approved plan deltas.
+- `PROJECT_STATE.md` is the compact, committed operational index: current intent, active approved outcome, code map, durable failures, and integrated work.
 - Git's local common directory holds short-lived shared coordination: live claims, heartbeats, and completed results awaiting integration. It is shared by local Git worktrees but is never committed or used as a chat transcript.
 
 Treat harness memory and chat history as disposable conveniences, not authority.
+
+## Project intake and approval
+
+1. Inspect repository facts before asking questions. When intent, sources, constraints, priorities, or ownership are unclear, interview the user one decision at a time and give a recommendation.
+2. Record compact facts, source references, assumptions, and decision cards in the draft `PROJECT_PLAN.md`; never paste raw chats or reasoning.
+3. Do not claim implementation work while the plan is a draft. High-impact source conflicts or open decisions affecting the executable milestone require a user answer.
+4. After the user explicitly approves, run `continuity plan approve --approved --milestone M-001`. This records and commits the approval before autonomous work begins.
+5. Later product, priority, constraint, or milestone changes become an explicit plan delta. Technical implementation decomposition remains inside already-approved outcomes.
 
 ## Start or resume a session
 
@@ -37,4 +46,5 @@ When a user has approved a new task but no task is queued yet, use `continuity t
 - Do not claim `autonomous: no` work. Do not invent tasks or product features.
 - Keep state claims factual and one line. Never paste raw chats, model reasoning, source code, secrets, or untrusted multiline text into durable state.
 - Keep `Context Capsules` path-scoped. The durable index may hold approximately 30k tokens, but a routine context packet must stay bounded and select only project-wide plus task-relevant capsules.
+- Preserve completed milestones in committed `PROJECT_HISTORY/` archives when active plan context would otherwise grow large.
 - Stop for destructive actions, production changes, credentials, paid services, security uncertainty, unresolved product choices, repeated blockers, or unexplained validation failures.
