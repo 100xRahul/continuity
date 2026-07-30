@@ -2,10 +2,10 @@
 schema: 2
 fingerprint: sha256:a44745020e4d6abdcf01a9e82a63f864928ee19c9d372a95625f4a0060ab45aa
 branch: main
-head: 6f197cc564dc8c7a9699d282984ca21a0ec78186
+head: 9e45630ac944af7223a07ba192a04f0532e47594
 status: ready
 active_task: none
-updated_at: 2026-07-30T17:02:41Z
+updated_at: 2026-07-30T17:03:33Z
 ---
 
 # Continuity
@@ -43,7 +43,7 @@ Validation: none
 - [x] T-007 | Add layered 30k-token durable context | depends: T-006 | autonomous: yes | accepts: The portable core supports an approximately 30k-token durable budget, indexed context capsules, bounded scope-based selection, and tests proving startup context stays selective.
 - [x] T-008 | Add optional Worktrunk bridge and branch safety | depends: T-007 | autonomous: yes | accepts: Active writer claims reject a shared branch, and the project provides tested optional Worktrunk hooks or guidance that bootstrap bounded context and claims without requiring Worktrunk.
 - [x] T-009 | Refresh handoff during integration | depends: T-008 | autonomous: yes | accepts: Integration updates the durable handoff with the completed task and a safe next-session action, with focused tests.
-- [ ] T-010 | Add structured project intake and approved-plan lifecycle | depends: T-009 | autonomous: yes | accepts: PROJECT_PLAN.md drafts, validation, explicit approval, milestone activation, and plan deltas work through the portable CLI with focused tests.
+- [x] T-010 | Add structured project intake and approved-plan lifecycle | depends: T-009 | autonomous: yes | accepts: PROJECT_PLAN.md drafts, validation, explicit approval, milestone activation, and plan deltas work through the portable CLI with focused tests.
 - [ ] T-011 | Add outcome-linked autonomous task graph | depends: T-010 | autonomous: yes | accepts: Tasks require active approved outcomes and focused contracts, and agents can choose and claim valid ready work with recorded rationale.
 - [ ] T-012 | Add automatic change capsules and context archives | depends: T-011 | autonomous: yes | accepts: Integration derives evidence-backed task capsules, projects relevant context, and archives completed milestone history without bloating active prompts.
 - [ ] T-013 | Add policy gates and source-linked fact aging | depends: T-012 | autonomous: yes | accepts: Configured scoped policy checks gate verification, affected facts refresh automatically, and meaningful stalls raise durable blocker cards.
@@ -123,6 +123,8 @@ Details: Interview the user one decision at a time only where repository inspect
 - Do not equate the approximately 30k-token durable budget with routine context size. The full index is deliberate-review material; startup and task context must select only project-wide and scope-relevant capsules. Evidence: `cmd/continuity/coordination.go`, `AGENTS.md`.
 
 ## Verification
+- Fresh init-to-approval CLI smoke: pass
+- go test ./... -count=1, go test -race ./... -count=1, go vet ./..., sh -n .codex/hooks/continuity.sh, and git diff --check: pass
 - go test ./... -count=1, go test -race ./... -count=1, go vet ./..., and git diff --check: pass
 - Fresh init smoke: Worktrunk templates, approved task bootstrap, named-branch claim, and release: pass
 - go test ./... -count=1, go test -race ./... -count=1, go vet ./..., and git diff --check: pass
@@ -135,6 +137,7 @@ Details: Interview the user one decision at a time only where repository inspect
 - `continuity sync` preserves active task state while refreshing Git metadata — pass.
 - T-008 focused tests, `go test ./... -count=1`, `go test -race ./... -count=1`, `go vet ./...`, and `git diff --check` — pass; a fresh-repository smoke test verified optional Worktrunk templates plus explicit task bootstrap and named-branch claiming.
 ## Recent Material Changes
+- Integrated T-010 at 9e45630ac944af7223a07ba192a04f0532e47594: Added structured project-plan intake, explicit approval receipts, milestone activation, plan deltas, and scoped startup projection.
 - Integrated T-009 at 4dc3561f759d76c358192f53db5d2325e111953f: Made integration refresh the durable handoff with the completed task and safe next-session action.
 - Integrated T-008 at 62261c78c5253907df7f3e913a867369f6f7ab62: Added optional Worktrunk orientation templates, branch-exclusive live claims, and explicit approved-task bootstrap.
 - Integrated T-007 at 259d2a238a309e2a08f64a39a929ad600f554339: Added schema-2 30k-token durable capsules with selective bounded context and no migration path.
@@ -148,5 +151,5 @@ Details: Interview the user one decision at a time only where repository inspect
 - Added initial portable state engine, task graph, and unit tests.
 - Added adapter scaffolding to `continuity init` with preservation checks for existing instructions.
 ## Handoff
-Last completed: T-009 — Made integration refresh the durable handoff with the completed task and safe next-session action.
+Last completed: T-010 — Added structured project-plan intake, explicit approval receipts, milestone activation, plan deltas, and scoped startup projection.
 Immediate restart action: Run continuity status. If an approved task is ready, claim it with continuity start; otherwise wait for user direction or use continuity task add --approved only for explicitly approved work.
