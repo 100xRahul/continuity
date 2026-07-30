@@ -2,10 +2,10 @@
 schema: 2
 fingerprint: sha256:ce995f340c404bd8b42c8983312a4c93893028ddcebe2c220e5ca060f9d1503d
 branch: main
-head: 62261c78c5253907df7f3e913a867369f6f7ab62
+head: 4dc3561f759d76c358192f53db5d2325e111953f
 status: ready
 active_task: none
-updated_at: 2026-07-30T15:58:11Z
+updated_at: 2026-07-30T15:58:57Z
 ---
 
 # Continuity
@@ -41,7 +41,7 @@ Validation: none
 - [x] T-006 | Build safe multi-session coordination | depends: T-005 | autonomous: yes | accepts: Concurrent local sessions receive a bounded shared status signal, claims are exclusive across worktrees, unsafe same-worktree writes are rejected, and adversarial tests cover races and state integrity.
 - [x] T-007 | Add layered 30k-token durable context | depends: T-006 | autonomous: yes | accepts: The portable core supports an approximately 30k-token durable budget, indexed context capsules, bounded scope-based selection, and tests proving startup context stays selective.
 - [x] T-008 | Add optional Worktrunk bridge and branch safety | depends: T-007 | autonomous: yes | accepts: Active writer claims reject a shared branch, and the project provides tested optional Worktrunk hooks or guidance that bootstrap bounded context and claims without requiring Worktrunk.
-- [ ] T-009 | Refresh handoff during integration | depends: T-008 | autonomous: yes | accepts: Integration updates the durable handoff with the completed task and a safe next-session action, with focused tests.
+- [x] T-009 | Refresh handoff during integration | depends: T-008 | autonomous: yes | accepts: Integration updates the durable handoff with the completed task and a safe next-session action, with focused tests.
 ## Active Decisions
 
 - D-001 — Keep committed durable project knowledge in `PROJECT_STATE.md`; Git is the archive. Keep short-lived same-machine ownership outside that file. Why: a bounded current projection avoids both vendor lock-in and transcript bloat without turning progress pings into merge conflicts. Evidence: `internal/continuity/state.go`, `internal/continuity/coordination.go`.
@@ -110,6 +110,7 @@ Details: This prevents a fresh session from attempting finished work. Integratio
 - Do not equate the approximately 30k-token durable budget with routine context size. The full index is deliberate-review material; startup and task context must select only project-wide and scope-relevant capsules. Evidence: `cmd/continuity/coordination.go`, `AGENTS.md`.
 
 ## Verification
+- go test ./... -count=1, go test -race ./... -count=1, go vet ./..., and git diff --check: pass
 - Fresh init smoke: Worktrunk templates, approved task bootstrap, named-branch claim, and release: pass
 - go test ./... -count=1, go test -race ./... -count=1, go vet ./..., and git diff --check: pass
 - `go test ./... -count=1`, `go test -race ./... -count=1`, `go vet ./...`, and `git diff --check` — pass.
@@ -121,6 +122,7 @@ Details: This prevents a fresh session from attempting finished work. Integratio
 - `continuity sync` preserves active task state while refreshing Git metadata — pass.
 - T-008 focused tests, `go test ./... -count=1`, `go test -race ./... -count=1`, `go vet ./...`, and `git diff --check` — pass; a fresh-repository smoke test verified optional Worktrunk templates plus explicit task bootstrap and named-branch claiming.
 ## Recent Material Changes
+- Integrated T-009 at 4dc3561f759d76c358192f53db5d2325e111953f: Made integration refresh the durable handoff with the completed task and safe next-session action.
 - Integrated T-008 at 62261c78c5253907df7f3e913a867369f6f7ab62: Added optional Worktrunk orientation templates, branch-exclusive live claims, and explicit approved-task bootstrap.
 - Integrated T-007 at 259d2a238a309e2a08f64a39a929ad600f554339: Added schema-2 30k-token durable capsules with selective bounded context and no migration path.
 - Integrated T-006 at 667498ef75cbec10d4a2caeb99b0f6d722f2cc82: Implemented bounded same-machine multi-session coordination with exclusive claims, safe lifecycle integration, and Codex live-context hooks.
@@ -133,5 +135,5 @@ Details: This prevents a fresh session from attempting finished work. Integratio
 - Added initial portable state engine, task graph, and unit tests.
 - Added adapter scaffolding to `continuity init` with preservation checks for existing instructions.
 ## Handoff
-Last completed: T-007 — Added a schema-2, approximately 30k-token durable index with path-indexed capsules and bounded scope-selected context packets.
-Immediate restart action: T-008 is user-approved. Claim it to add optional Worktrunk support and branch-level writer safety.
+Last completed: T-009 — Made integration refresh the durable handoff with the completed task and safe next-session action.
+Immediate restart action: Run continuity status. If an approved task is ready, claim it with continuity start; otherwise wait for user direction or use continuity task add --approved only for explicitly approved work.
