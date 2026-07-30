@@ -419,6 +419,11 @@ func integrateCommand(args []string) error {
 			if err := state.ReplaceSection("Recent Material Changes", recent); err != nil {
 				return err
 			}
+			handoff := "Last completed: " + *id + " — " + integrated.Summary + "\n" +
+				"Immediate restart action: Run continuity status. If an approved task is ready, claim it with continuity start; otherwise wait for user direction or use continuity task add --approved only for explicitly approved work."
+			if err := state.ReplaceSection("Handoff", handoff); err != nil {
+				return err
+			}
 			verification := strings.TrimSpace(state.Section("Verification"))
 			for _, evidence := range integrated.Evidence {
 				verification = "- " + evidence + "\n" + verification

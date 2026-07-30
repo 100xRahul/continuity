@@ -1,11 +1,11 @@
 ---
 schema: 2
-fingerprint: sha256:3c8cc57032010f244a5a01edc58f30f1e2f024e4176d3868fad6a83047ca18d6
+fingerprint: sha256:ce995f340c404bd8b42c8983312a4c93893028ddcebe2c220e5ca060f9d1503d
 branch: main
-head: ba303d1e7e1ecc3204f1583d0689dcef0c9ee5c8
+head: 62261c78c5253907df7f3e913a867369f6f7ab62
 status: ready
 active_task: none
-updated_at: 2026-07-30T15:55:05Z
+updated_at: 2026-07-30T15:58:11Z
 ---
 
 # Continuity
@@ -40,7 +40,8 @@ Validation: none
 - [x] T-005 | Add post-commit metadata synchronization | depends: T-004 | autonomous: yes | accepts: A sync command records the current Git branch, HEAD, fingerprint, and timestamp without altering task state.
 - [x] T-006 | Build safe multi-session coordination | depends: T-005 | autonomous: yes | accepts: Concurrent local sessions receive a bounded shared status signal, claims are exclusive across worktrees, unsafe same-worktree writes are rejected, and adversarial tests cover races and state integrity.
 - [x] T-007 | Add layered 30k-token durable context | depends: T-006 | autonomous: yes | accepts: The portable core supports an approximately 30k-token durable budget, indexed context capsules, bounded scope-based selection, and tests proving startup context stays selective.
-- [ ] T-008 | Add optional Worktrunk bridge and branch safety | depends: T-007 | autonomous: yes | accepts: Active writer claims reject a shared branch, and the project provides tested optional Worktrunk hooks or guidance that bootstrap bounded context and claims without requiring Worktrunk.
+- [x] T-008 | Add optional Worktrunk bridge and branch safety | depends: T-007 | autonomous: yes | accepts: Active writer claims reject a shared branch, and the project provides tested optional Worktrunk hooks or guidance that bootstrap bounded context and claims without requiring Worktrunk.
+- [ ] T-009 | Refresh handoff during integration | depends: T-008 | autonomous: yes | accepts: Integration updates the durable handoff with the completed task and a safe next-session action, with focused tests.
 ## Active Decisions
 
 - D-001 — Keep committed durable project knowledge in `PROJECT_STATE.md`; Git is the archive. Keep short-lived same-machine ownership outside that file. Why: a bounded current projection avoids both vendor lock-in and transcript bloat without turning progress pings into merge conflicts. Evidence: `internal/continuity/state.go`, `internal/continuity/coordination.go`.
@@ -52,6 +53,7 @@ Validation: none
 - D-007 — Codex hooks preload bounded context, emit a small live pulse on later prompts, and guard documented Bash and patch paths; child agents remain read-only in their parent checkout. Why: this surfaces live ownership without repeated full-state stuffing, while Codex child hooks inherit the parent session ID and cannot safely distinguish simultaneous child writers. Evidence: `.codex/hooks.json`, `cmd/continuity/coordination.go`.
 - D-008 — Permit approximately 30,000 tokens of durable project knowledge, but select context through path-indexed capsules. Why: larger projects need richer accumulated facts, while routine session startup must remain small and relevant. Evidence: `internal/continuity/state.go`, `cmd/continuity/coordination.go`.
 - D-009 — Keep Worktrunk as an optional orientation bridge and require one named branch per live writer. Why: Worktrunk improves Git-worktree ergonomics, but shared context, task ownership, and safety must still work with plain Git and every harness. Evidence: `.agents/worktrunk/`, `cmd/continuity/main.go`, `internal/continuity/coordination.go`.
+- D-010 — Refresh the durable handoff during integration. Why: a completed task is not useful to a fresh session if its restart instruction still names older work. Evidence: `cmd/continuity/coordination.go`.
 
 ## Constraints and Approval Boundaries
 
@@ -63,7 +65,7 @@ Validation: none
 ## Code Map
 
 - CLI command routing — `cmd/continuity/main.go` — parses lifecycle commands, explicitly approved task bootstrap, and state/Git facts.
-- Live coordination commands — `cmd/continuity/coordination.go` — bounded context packets, branch-aware claims, lifecycle integration, and Codex hook output.
+- Live coordination commands — `cmd/continuity/coordination.go` — bounded context packets, branch-aware claims, lifecycle integration with current handoff, and Codex hook output.
 - State engine — `internal/continuity/state.go` — Markdown front matter, sections, approximately 30k-token validation, path-indexed Context Capsules, templates, and atomic writes.
 - Git facts — `internal/continuity/git.go` — repository snapshots, source fingerprints, and incremental reconciliation.
 - Coordination store — `internal/continuity/coordination.go` — common-Git-directory claims, heartbeats, branch and scope exclusion, pending completions, and explicit stale recovery.
@@ -89,6 +91,11 @@ Paths: .agents/worktrunk, AGENTS.md, cmd/continuity/main.go, cmd/continuity/coor
 Summary: Worktrunk is optional; the portable core prevents concurrent writers from sharing a worktree or named branch.
 Details: The optional Worktrunk `pre-start` template only prints bounded orientation and live ownership. Start the real harness in its worktree first, then claim with that session's identity and a narrow scope. A user-approved task can be added only through the explicit pre-claim `continuity task add --approved` route; never infer one.
 
+### Integration handoff
+Paths: cmd/continuity/coordination.go, PROJECT_STATE.md
+Summary: A successful integration makes the durable handoff point to the just-completed task and a safe generic restart action.
+Details: This prevents a fresh session from attempting finished work. Integration remains the only lifecycle step that makes a result durable; it updates task status, verification, recent changes, and handoff together.
+
 ## Known Pitfalls and Failed Approaches
 
 - Record only failures that remain relevant. Include the failed approach, evidence, resolution, and affected paths.
@@ -99,9 +106,12 @@ Details: The optional Worktrunk `pre-start` template only prints bounded orienta
 - Do not place unchecked multiline lifecycle text in Markdown state. It can forge a second heading or queue entry; claims, checkpoints, and completions accept only one-line fields. Evidence: `cmd/continuity/main.go`, `internal/continuity/coordination.go`.
 - Do not let multiple Codex child agents write one parent checkout. They share the parent's hook session ID; use separate worktrees for independent writers. Evidence: `AGENTS.md`, `.codex/hooks.json`.
 - Do not treat separate paths or worktrees as safe when writers share a named branch. The live claim board rejects a second writer on that branch; create a dedicated branch before claiming work. Evidence: `internal/continuity/coordination.go`, `cmd/continuity/main.go`.
+- Do not leave a completed task's handoff pointing at older work. The integration command updates the task status, evidence, recent changes, and restart instruction together. Evidence: `cmd/continuity/coordination.go`, `cmd/continuity/main_test.go`.
 - Do not equate the approximately 30k-token durable budget with routine context size. The full index is deliberate-review material; startup and task context must select only project-wide and scope-relevant capsules. Evidence: `cmd/continuity/coordination.go`, `AGENTS.md`.
 
 ## Verification
+- Fresh init smoke: Worktrunk templates, approved task bootstrap, named-branch claim, and release: pass
+- go test ./... -count=1, go test -race ./... -count=1, go vet ./..., and git diff --check: pass
 - `go test ./... -count=1`, `go test -race ./... -count=1`, `go vet ./...`, and `git diff --check` — pass.
 - Focused capsule selection, malformed scope/budget, and large-capsule bounded-packet tests — pass.
 - Fresh `continuity init`, schema-2 validation, scoped context, and obsolete-command smoke test — pass.
@@ -111,6 +121,7 @@ Details: The optional Worktrunk `pre-start` template only prints bounded orienta
 - `continuity sync` preserves active task state while refreshing Git metadata — pass.
 - T-008 focused tests, `go test ./... -count=1`, `go test -race ./... -count=1`, `go vet ./...`, and `git diff --check` — pass; a fresh-repository smoke test verified optional Worktrunk templates plus explicit task bootstrap and named-branch claiming.
 ## Recent Material Changes
+- Integrated T-008 at 62261c78c5253907df7f3e913a867369f6f7ab62: Added optional Worktrunk orientation templates, branch-exclusive live claims, and explicit approved-task bootstrap.
 - Integrated T-007 at 259d2a238a309e2a08f64a39a929ad600f554339: Added schema-2 30k-token durable capsules with selective bounded context and no migration path.
 - Integrated T-006 at 667498ef75cbec10d4a2caeb99b0f6d722f2cc82: Implemented bounded same-machine multi-session coordination with exclusive claims, safe lifecycle integration, and Codex live-context hooks.
 - Completed T-005: Added and verified post-commit metadata synchronization; the command refreshes branch, HEAD, fingerprint, and timestamp without altering task state.

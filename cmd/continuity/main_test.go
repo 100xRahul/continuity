@@ -58,6 +58,9 @@ func TestLifecycleCommands(t *testing.T) {
 	if !strings.Contains(finished.Section("Recent Material Changes"), "Integrated T-001") {
 		t.Fatalf("integration was not recorded: %s", finished.Section("Recent Material Changes"))
 	}
+	if !strings.Contains(finished.Section("Handoff"), "Last completed: T-001 — Lifecycle command test passed.") || !strings.Contains(finished.Section("Handoff"), "Run continuity status") {
+		t.Fatalf("integration did not refresh handoff: %s", finished.Section("Handoff"))
+	}
 	if _, err := os.Stat(filepath.Join(root, continuity.StateFilename)); err != nil {
 		t.Fatal(err)
 	}
