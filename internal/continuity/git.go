@@ -22,6 +22,9 @@ type GitSnapshot struct {
 }
 
 func EnsureGitRepo(directory string) (string, error) {
+	if err := os.MkdirAll(directory, 0o755); err != nil {
+		return "", fmt.Errorf("create repository directory: %w", err)
+	}
 	if _, err := git(directory, "rev-parse", "--show-toplevel"); err == nil {
 		return GitRoot(directory)
 	}
@@ -319,6 +322,37 @@ func ChangedSinceState(directory string) ([]string, error) {
 	}
 	lines := strings.FieldsFunc(strings.TrimSpace(output), func(r rune) bool { return r == '\n' })
 	return lines, nil
+}
+
+// ChangedPathsSinceState returns only repository-relative path names changed
+// since the last committed durable state record. It is suitable for aging
+// source-linked facts; the human-oriented ChangedSinceState keeps its status
+// prefixes for reconcile output.
+func ChangedPathsSinceState(directory string) ([]string, error) {
+	commit := LastStateCommit(directory)
+	if commit == "" {
+		return nil, nil
+	}
+	output, err := git(directory, "diff", "--name-only", "-z", commit+"..HEAD")
+	if err != nil {
+		return nil, err
+	}
+	paths := []string{}
+	seen := map[string]bool{}
+	for _, item := range strings.Split(output, "\x00") {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			continue
+		}
+		path := filepath.ToSlash(filepath.Clean(item))
+		if path == "." || path == ".." || strings.HasPrefix(path, "../") || seen[path] {
+			continue
+		}
+		seen[path] = true
+		paths = append(paths, path)
+	}
+	sort.Strings(paths)
+	return paths, nil
 }
 
 // ReviewAnchors reports durable evidence anchors whose file or directory was

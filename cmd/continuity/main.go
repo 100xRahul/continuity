@@ -38,6 +38,12 @@ func main() {
 		err = taskCommand(os.Args[2:])
 	case "plan":
 		err = planCommand(os.Args[2:])
+	case "policy":
+		err = policyCommand(os.Args[2:])
+	case "fact":
+		err = factCommand(os.Args[2:])
+	case "blocker":
+		err = blockerCommand(os.Args[2:])
 	case "status":
 		err = statusCommand(os.Args[2:])
 	case "context":
@@ -93,6 +99,9 @@ Usage:
   continuity plan outcome add|complete ... [--repo .]
   continuity plan decision add|resolve ... [--repo .]
   continuity plan delta add|approve ... [--repo .]
+  continuity policy add|check|status ... [--repo .]
+  continuity fact add|confirm|status ... [--repo .]
+  continuity blocker add|resolve|status ... [--repo .]
   continuity status [--repo .]
   continuity context [--session codex-session-id|--owner harness:id] [--scope path,...] [--limit bytes] [--repo .]
   continuity heartbeat [--id T-001] --session id [--repo .]
@@ -234,6 +243,42 @@ func checkCommand(args []string) error {
 			result.Errorf("delivery plan active milestone %q does not match PROJECT_STATE.md projection %q", plan.Meta["active_milestone"], state.Meta["plan_active_milestone"])
 		}
 	}
+	if policies, policyErr := loadOptionalPolicyDocument(root); policyErr != nil {
+		result.Errorf("policy checks: %v", policyErr)
+	} else if policies != nil {
+		for _, policy := range policies.Policies {
+			if err := continuity.ValidatePolicy(policy); err != nil {
+				result.Errorf("policy %s: %v", policy.ID, err)
+			}
+		}
+	}
+	if facts, factErr := state.FactCards(); factErr != nil {
+		result.Errorf("fact cards: %v", factErr)
+	} else {
+		for _, fact := range facts {
+			if fact.Status == "stale" {
+				result.Warnf("stale fact %s (%s) needs a fresh evidence receipt before overlapping work", fact.ID, fact.Source)
+			}
+		}
+		if changed, changedErr := evidenceChangedPathsSinceState(root); changedErr != nil {
+			result.Errorf("fact-card evidence changes: %v", changedErr)
+		} else {
+			for _, fact := range continuity.FactCardsAffectedByPaths(facts, changed) {
+				if fact.Status == "fresh" {
+					result.Errorf("source-linked fact %s has unsynchronized evidence changes; run continuity reconcile and continuity sync", fact.ID)
+				}
+			}
+		}
+	}
+	if blockers, blockerErr := state.BlockerCards(); blockerErr != nil {
+		result.Errorf("blocker cards: %v", blockerErr)
+	} else {
+		for _, blocker := range blockers {
+			if blocker.Status == "open" {
+				result.Warnf("open blocker %s affects %s: %s", blocker.ID, strings.Join(blocker.Scope, ","), blocker.NextAction)
+			}
+		}
+	}
 	snapshot := continuity.Snapshot(root)
 	fingerprint, err := continuity.Fingerprint(root)
 	if err != nil {
@@ -336,6 +381,22 @@ func reconcileCommand(args []string) error {
 			fmt.Println(" ", path)
 		}
 	}
+	if facts, factErr := state.FactCards(); factErr != nil {
+		return fmt.Errorf("fact cards: %w", factErr)
+	} else {
+		paths, err := continuity.ChangedPathsSinceState(root)
+		if err != nil {
+			return err
+		}
+		paths = append(paths, snapshot.ChangedFiles...)
+		if affected := continuity.FactCardsAffectedByPaths(facts, paths); len(affected) > 0 {
+			fmt.Println("Fact cards affected by listed changes:")
+			for _, fact := range affected {
+				fmt.Printf(" - %s [%s] | source: %s | paths: %s\n", fact.ID, fact.Status, fact.Source, strings.Join(fact.Paths, ","))
+			}
+			fmt.Println("Run continuity sync to mark affected fresh facts stale, then confirm reviewed facts before overlapping work.")
+		}
+	}
 	if fingerprint == state.Meta["fingerprint"] && !snapshot.Dirty {
 		fmt.Println("No reconciliation is required.")
 	} else {
@@ -351,12 +412,14 @@ func syncCommand(args []string) error {
 	}
 	branch := ""
 	head := ""
+	aged := []continuity.FactCard{}
 	if err := continuity.WithCoordinationLock(root, func() error {
 		state, err := loadState(root)
 		if err != nil {
 			return err
 		}
-		if err := synchronize(state, root); err != nil {
+		aged, err = synchronizeWithAging(state, root)
+		if err != nil {
 			return err
 		}
 		if err := state.Save(); err != nil {
@@ -369,6 +432,13 @@ func syncCommand(args []string) error {
 		return err
 	}
 	fmt.Printf("synchronized %s on branch %s at %s\n", continuity.StateFilename, branch, head)
+	if len(aged) > 0 {
+		ids := make([]string, 0, len(aged))
+		for _, fact := range aged {
+			ids = append(ids, fact.ID)
+		}
+		fmt.Printf("marked stale from changed evidence: %s\n", strings.Join(ids, ", "))
+	}
 	return nil
 }
 
@@ -858,6 +928,24 @@ func startCommand(args []string) error {
 	} else if len(claimScope) == 0 && len(selected.Scope) > 0 {
 		claimScope = append([]string(nil), selected.Scope...)
 	}
+	if facts, err := state.FactCards(); err != nil {
+		return fmt.Errorf("fact cards: %w", err)
+	} else if stale := continuity.StaleFactCardsForScopes(facts, claimScope); len(stale) > 0 {
+		ids := make([]string, 0, len(stale))
+		for _, fact := range stale {
+			ids = append(ids, fact.ID)
+		}
+		return fmt.Errorf("task %s overlaps stale fact(s) %s; inspect their source paths and run continuity fact confirm --id <fact> --evidence 'review result' before claiming", selected.ID, strings.Join(ids, ", "))
+	}
+	if blockers, err := state.BlockerCards(); err != nil {
+		return fmt.Errorf("blocker cards: %w", err)
+	} else if open := continuity.OpenBlockerCardsForScopes(blockers, claimScope); len(open) > 0 {
+		ids := make([]string, 0, len(open))
+		for _, blocker := range open {
+			ids = append(ids, blocker.ID)
+		}
+		return fmt.Errorf("task %s overlaps open blocker(s) %s; gather new evidence and resolve the blocker before retrying", selected.ID, strings.Join(ids, ", "))
+	}
 	if err := requireSingleLine(map[string]string{
 		"--goal":        claimGoal,
 		"--acceptance":  claimAcceptance,
@@ -972,13 +1060,33 @@ func finalizeCommand(args []string) error {
 	if claimOwner == "" {
 		claimOwner = ownerForSession(*session)
 	}
+	claim, err := continuity.FindClaimForWorktree(root)
+	if err != nil {
+		return err
+	}
+	if claim != nil {
+		if *id != "" && claim.TaskID != *id {
+			return fmt.Errorf("this worktree owns %s, not requested task %s", claim.TaskID, *id)
+		}
+		if claimOwner != "" && claim.Owner != claimOwner {
+			return fmt.Errorf("this worktree claim belongs to %s, not %s", claim.Owner, claimOwner)
+		}
+		if claimOwner == "" {
+			claimOwner = claim.Owner
+		}
+	}
+	policyEvidence, err := enforceFinalizationPolicies(root, claim)
+	if err != nil {
+		return err
+	}
+	completionEvidence := append(parseEvidence(*evidence), policyEvidence...)
 	completion, err := continuity.CompleteClaim(root, continuity.CompletionRequest{
 		TaskID:   *id,
 		Owner:    claimOwner,
 		Worktree: root,
 		Commit:   resolvedCommit,
 		Summary:  *summary,
-		Evidence: parseEvidence(*evidence),
+		Evidence: completionEvidence,
 	})
 	if err != nil {
 		return err
@@ -1035,6 +1143,21 @@ func synchronize(state *continuity.State, root string) error {
 	return nil
 }
 
+// synchronizeWithAging refreshes the compact Git snapshot and makes the only
+// permitted automatic fact change: fresh facts whose declared evidence paths
+// changed become stale. It never changes a fact's meaning or marks one fresh;
+// confirmation always needs explicit new review evidence.
+func synchronizeWithAging(state *continuity.State, root string) ([]continuity.FactCard, error) {
+	aged, err := ageFactsBeforeSynchronize(root, state)
+	if err != nil {
+		return nil, err
+	}
+	if err := synchronize(state, root); err != nil {
+		return nil, err
+	}
+	return aged, nil
+}
+
 func requireFreshState(root string, state *continuity.State) error {
 	fingerprint, err := continuity.Fingerprint(root)
 	if err != nil {
@@ -1042,6 +1165,23 @@ func requireFreshState(root string, state *continuity.State) error {
 	}
 	if fingerprint != state.Meta["fingerprint"] {
 		return errors.New("PROJECT_STATE.md is stale; run continuity reconcile, update the durable facts, then continuity sync before claiming work")
+	}
+	facts, err := state.FactCards()
+	if err != nil {
+		return fmt.Errorf("fact cards: %w", err)
+	}
+	changed, err := evidenceChangedPathsSinceState(root)
+	if err != nil {
+		return err
+	}
+	fresh := []string{}
+	for _, fact := range continuity.FactCardsAffectedByPaths(facts, changed) {
+		if fact.Status == "fresh" {
+			fresh = append(fresh, fact.ID)
+		}
+	}
+	if len(fresh) > 0 {
+		return fmt.Errorf("source-linked fact(s) %s have unsynchronized evidence changes; run continuity reconcile and continuity sync before claiming work", strings.Join(fresh, ", "))
 	}
 	return nil
 }

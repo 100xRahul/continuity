@@ -15,6 +15,12 @@ Use the committed project index for durable meaning and the live local claim boa
 4. If state is stale, run `continuity reconcile`; inspect only listed changes and mapped code. Update durable facts and run `continuity sync` before claiming a task.
 5. Run `continuity ready` and select only an approved, unblocked `autonomous: yes` task with observable acceptance criteria. For planned work, use its outcome priority and direct unblocking evidence, then record the reason at claim time.
 
+## Evidence gates
+
+`PROJECT_STATE.md` may include compact source-linked Fact Cards and durable Blocker Cards. A stale fact or open blocker overlapping the task scope is an active gate, not background context: inspect the named evidence and use `continuity fact confirm` or `continuity blocker resolve` from an unclaimed integration checkout before retrying. Do not silently rewrite a fact's claim to make it fresh.
+
+`CONTINUITY_POLICY.md` is an optional committed list of user-approved finalization commands. Add a command only after explicit user approval with `continuity policy add --approved ...`; relevant checks run automatically during `continuity finalize`. If one fails, inspect it and checkpoint the claim; do not create a completion or retry unchanged evidence. Read [governance-schema.md](references/governance-schema.md) before adding a fact, policy, or blocker.
+
 ## Intake and plan approval
 
 If `PROJECT_PLAN.md` is a draft, inspect the repository and interview the user one decision at a time. Ask only for product choices that cannot be discovered locally, always give a recommendation, and capture compact facts rather than raw chat. Do not claim implementation work until the user explicitly approves the active milestone through `continuity plan approve --approved --milestone M-001`.
@@ -29,7 +35,7 @@ Honor the task contract. Checkpoint material progress, validation, or blockers w
 
 ## Complete and integrate
 
-Run focused validation, commit the worker result, then finalize with the commit and factual evidence. A completion remains pending until its commit is present in the integration checkout. After merge or handoff, run `continuity integrate --id <task>` to update the durable index and unblock dependencies. Integration derives actual changed paths from the claim's Git range, writes `PROJECT_HISTORY/changes/<task>.md`, keeps at most three short path-scoped change capsules active, and gives the handoff the actual next ready task. Commit the state and generated archive together. Once every task linked to an active outcome is integrated, run `continuity plan outcome complete --id <outcome> --evidence 'verification: pass'`; milestone activation archives its completed outcome set.
+Run focused validation, commit the worker result, then finalize with the commit and factual evidence. Relevant approved policies run before the completion is recorded. A completion remains pending until its commit is present in the integration checkout. After merge or handoff, run `continuity integrate --id <task>` to update the durable index and unblock dependencies. Integration derives actual changed paths from the claim's Git range, ages affected fresh Fact Cards, writes `PROJECT_HISTORY/changes/<task>.md`, keeps at most three short path-scoped change capsules active, and gives the handoff the actual next ready task. Commit the state and generated archive together. Once every task linked to an active outcome is integrated, run `continuity plan outcome complete --id <outcome> --evidence 'verification: pass'`; milestone activation archives its completed outcome set.
 
 Keep context bounded: use `continuity context --scope <task path>` first, then read only the matching Context Capsules, relevant state section, and mapped code. The durable index may hold approximately 30k tokens; routine startup must not load it wholesale. Read [state-schema.md](references/state-schema.md) when changing state structure or resolving ownership, freshness, or integration questions.
 

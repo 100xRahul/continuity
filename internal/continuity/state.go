@@ -187,6 +187,26 @@ func (s *State) ReplaceSection(name, content string) error {
 	return nil
 }
 
+// ReplaceOrAddSection preserves backwards compatibility with earlier state
+// documents while allowing new optional structured projections to be added
+// without a format migration.
+func (s *State) ReplaceOrAddSection(name, content string) error {
+	if strings.TrimSpace(name) == "" || strings.ContainsAny(name, "\r\n") {
+		return errors.New("section name must be a non-empty single line")
+	}
+	if _, exists := s.Sections[name]; exists {
+		return s.ReplaceSection(name, content)
+	}
+	content = strings.TrimSpace(content)
+	s.Body = strings.TrimSpace(s.Body) + "\n\n## " + name + "\n\n"
+	if content != "" {
+		s.Body += content + "\n"
+	}
+	s.Body = normalizeBody(s.Body)
+	s.parseSections()
+	return nil
+}
+
 func (s *State) SetMeta(key, value string) {
 	if s.Meta == nil {
 		s.Meta = map[string]string{}
@@ -285,6 +305,12 @@ func (s *State) Validate(budget int) Validation {
 	}
 	if _, err := s.ContextCapsules(); err != nil {
 		result.Errorf("context capsules: %v", err)
+	}
+	if _, err := s.FactCards(); err != nil {
+		result.Errorf("fact cards: %v", err)
+	}
+	if _, err := s.BlockerCards(); err != nil {
+		result.Errorf("blocker cards: %v", err)
 	}
 	if len(s.Render()) > budget {
 		result.Errorf("state is %d bytes; budget is %d bytes", len(s.Render()), budget)
@@ -611,6 +637,10 @@ Validation: none
 ## Active Decisions
 
 - Add only active engineering decisions with a short why and a repository-relative evidence anchor.
+
+## Fact Cards
+
+## Blocker Cards
 
 ## Constraints and Approval Boundaries
 

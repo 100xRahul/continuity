@@ -876,7 +876,7 @@ func synchronizePlanIndexWithHandoff(root string, plan *continuity.Plan, handoff
 			return err
 		}
 	}
-	if err := synchronize(state, root); err != nil {
+	if _, err := synchronizeWithAging(state, root); err != nil {
 		return err
 	}
 	return state.Save()

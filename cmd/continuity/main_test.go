@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"continuity/internal/continuity"
 )
@@ -99,6 +100,73 @@ func TestLifecycleCommands(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(root, continuity.StateFilename)); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestIntegrationAgesOverlappingFactBeforeSuggestingNextTask(t *testing.T) {
+	root := t.TempDir()
+	if _, err := continuity.EnsureGitRepo(root); err != nil {
+		t.Fatal(err)
+	}
+	fingerprint, err := continuity.Fingerprint(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := continuity.NewTemplate(filepath.Join(root, continuity.StateFilename), "Test", "Test integration fact aging.", continuity.Snapshot(root), fingerprint)
+	if err := state.ReplaceSection("Ready Queue", strings.Join([]string{
+		"- [ ] T-001 | Change the result | depends: none | autonomous: yes | accepts: Result is written.",
+		"- [ ] T-002 | Review the result | depends: T-001 | autonomous: yes | accepts: Follow-up is ready.",
+	}, "\n")); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.ReplaceFactCards([]continuity.FactCard{{
+		Status:     "fresh",
+		ID:         "F-001",
+		Source:     "D-001",
+		Paths:      []string{"result.go"},
+		VerifiedAt: time.Now().UTC(),
+		Evidence:   "Initial result review passed.",
+		Summary:    "Result behavior needs review after source changes.",
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.Save(); err != nil {
+		t.Fatal(err)
+	}
+	runGitCommand(t, root, "config", "user.name", "Continuity Test")
+	runGitCommand(t, root, "config", "user.email", "continuity@example.test")
+	runGitCommand(t, root, "add", ".")
+	runGitCommand(t, root, "commit", "-m", "baseline")
+
+	if err := startCommand([]string{"--repo", root, "--owner", "test:worker", "--id", "T-001", "--goal", "Change the result", "--acceptance", "Result is written.", "--next-action", "Write result.go.", "--scope", "result.go"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "result.go"), []byte("package result\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGitCommand(t, root, "add", "result.go")
+	runGitCommand(t, root, "commit", "-m", "worker result")
+	if err := finalizeCommand([]string{"--repo", root, "--owner", "test:worker", "--id", "T-001", "--summary", "Result changed.", "--commit", "HEAD", "--evidence", "focused test: pass"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := integrateCommand([]string{"--repo", root, "--id", "T-001"}); err != nil {
+		t.Fatal(err)
+	}
+
+	finished, err := continuity.LoadState(filepath.Join(root, continuity.StateFilename))
+	if err != nil {
+		t.Fatal(err)
+	}
+	facts, err := finished.FactCards()
+	if err != nil || len(facts) != 1 || facts[0].Status != "stale" {
+		t.Fatalf("integration did not age overlapping fact: %#v, %v", facts, err)
+	}
+	if handoff := finished.Section("Handoff"); !strings.Contains(handoff, "fact confirm --id F-001") {
+		t.Fatalf("handoff suggested work without confirmation: %s", handoff)
+	}
+	err = startCommand([]string{"--repo", root, "--owner", "test:worker", "--id", "T-002", "--goal", "Review the result", "--acceptance", "Follow-up is ready.", "--next-action", "Review result.go."})
+	if err == nil || !strings.Contains(err.Error(), "stale fact") {
+		t.Fatalf("stale fact did not prevent follow-up task: %v", err)
 	}
 }
 

@@ -284,6 +284,32 @@ func compactContext(root, owner string, limit int, requestedScopes []string) (st
 		builder.WriteString("\n")
 		builder.WriteString(renderPlanContext(plan, selectionScopes))
 	}
+	if facts, factErr := state.FactCards(); factErr != nil {
+		return "", fmt.Errorf("read Fact Cards: %w", factErr)
+	} else if stale := continuity.StaleFactCardsForScopes(facts, selectionScopes); len(stale) > 0 {
+		builder.WriteString("\nStale source-linked facts:\n")
+		for _, fact := range stale {
+			fmt.Fprintf(&builder, "- %s | source: %s | paths: %s | confirm with new review evidence before overlapping work\n", fact.ID, fact.Source, strings.Join(fact.Paths, ","))
+		}
+	}
+	if blockers, blockerErr := state.BlockerCards(); blockerErr != nil {
+		return "", fmt.Errorf("read Blocker Cards: %w", blockerErr)
+	} else if open := continuity.OpenBlockerCardsForScopes(blockers, selectionScopes); len(open) > 0 {
+		builder.WriteString("\nOpen durable blockers:\n")
+		for _, blocker := range open {
+			fmt.Fprintf(&builder, "- %s | task: %s | hypothesis: %s | next: %s\n", blocker.ID, blocker.TaskID, blocker.Hypothesis, blocker.NextAction)
+		}
+	}
+	if policies, policyErr := loadOptionalPolicyDocument(root); policyErr != nil {
+		return "", fmt.Errorf("load policy checks: %w", policyErr)
+	} else if policies != nil {
+		if relevant := continuity.PoliciesForScopes(policies.Policies, selectionScopes, "finalize"); len(relevant) > 0 {
+			builder.WriteString("\nRelevant finalization policy checks:\n")
+			for _, policy := range relevant {
+				fmt.Fprintf(&builder, "- %s | scope: %s | %s\n", policy.ID, strings.Join(policy.Scope, ","), policy.Reason)
+			}
+		}
+	}
 	capsules, capsuleErr := state.ContextCapsules()
 	if capsuleErr != nil {
 		return "", fmt.Errorf("read Context Capsules: %w", capsuleErr)
@@ -441,14 +467,18 @@ func integrateCommand(args []string) error {
 				return err
 			}
 		}
+		record, err := deriveChangeRecord(root, task, integrated, nextWork{})
+		if err != nil {
+			return err
+		}
+		if _, err := state.AgeFactCards(record.Paths); err != nil {
+			return err
+		}
 		next, err := selectNextWork(root, state)
 		if err != nil {
 			return err
 		}
-		record, err := deriveChangeRecord(root, task, integrated, next)
-		if err != nil {
-			return err
-		}
+		record.Next = next
 		if err := writeChangeArchive(root, record); err != nil {
 			return err
 		}
@@ -460,7 +490,7 @@ func integrateCommand(args []string) error {
 		if err := state.ReplaceSection("Handoff", handoff); err != nil {
 			return err
 		}
-		if err := synchronize(state, root); err != nil {
+		if _, err := synchronizeWithAging(state, root); err != nil {
 			return err
 		}
 		if result := state.Validate(continuity.DefaultStateBudget); !result.OK() {
@@ -602,7 +632,7 @@ func isContinuityCommand(command string) bool {
 
 func isContinuityLifecycleVerb(value string) bool {
 	switch value {
-	case "brief", "check", "context", "finalize", "heartbeat", "integrate", "plan", "ready", "reconcile", "recover-lock", "release", "start", "status", "task":
+	case "blocker", "brief", "check", "context", "fact", "finalize", "heartbeat", "integrate", "plan", "policy", "ready", "reconcile", "recover-lock", "release", "start", "status", "task":
 		return true
 	default:
 		return false

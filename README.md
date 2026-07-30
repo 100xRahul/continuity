@@ -5,7 +5,7 @@ Continuity is a local, Git-backed project-memory and coordination system for cod
 - What is this project, what has been approved, why does the code look this way, and what is next?
 - Is another local agent already working on this task, worktree, or code area right now?
 
-The detailed product roadmap belongs in committed `PROJECT_PLAN.md`; its compact active projection belongs in `PROJECT_STATE.md`. The second answer belongs in a tiny live coordination store under Git's common directory. Separating all three is what makes parallel sessions safe without turning routine prompts into a bloated scratchpad.
+The detailed product roadmap belongs in committed `PROJECT_PLAN.md`; its compact active projection, source-linked facts, and durable blockers belong in `PROJECT_STATE.md`. Live ownership belongs in a tiny coordination store under Git's common directory. Optional user-approved executable checks live in committed `CONTINUITY_POLICY.md`. Separating these concerns is what makes parallel sessions safe without turning routine prompts into a bloated scratchpad.
 
 ## The rule for multiple sessions
 
@@ -59,7 +59,7 @@ new session
   -> continuity ready
   -> continuity start --id T-001 --owner <harness:session-id> --selection-reason "why this is the best ready step"
   -> work + continuity checkpoint
-  -> commit + continuity finalize --commit <commit> --evidence 'test: pass'
+  -> commit + continuity finalize --commit <commit> --evidence 'test: pass' # runs relevant approved policy checks
   -> merge/handoff worker commit
   -> continuity integrate --id T-001
   -> commit PROJECT_STATE.md PROJECT_HISTORY/changes/T-001.md
@@ -93,6 +93,9 @@ continuity ready                  rank unclaimed autonomous ready tasks with sel
 continuity task add               record a user-specified or plan-bounded derived task before any claim exists
 continuity plan                   create, validate, approve, activate, and inspect the delivery plan
 continuity plan outcome complete  record evidence-backed completion after every linked task is integrated
+continuity policy                add, inspect, or run explicitly approved finalization checks
+continuity fact                  add, confirm, or inspect source-linked engineering facts
+continuity blocker               record, resolve, or inspect durable no-retry blockers
 continuity start                  atomically claim a task/worktree/scope
 continuity heartbeat              refresh an owned claim lease
 continuity checkpoint             save factual in-progress claim state
@@ -152,6 +155,16 @@ Integration keeps only the three newest generated `Change T-*` capsules in the a
 The source fingerprint uses Git's tracked and unignored files. It does not hash `.git` worktree metadata, ignored build binaries, generated harness adapters, or the target of an external symlink. A matching fingerprint avoids broad rescans; evidence anchors still tell an agent which small areas need review.
 
 The CLI rejects duplicate front matter or Markdown sections and rejects multiline lifecycle fields, so error text or prompt injection cannot silently create a second `Approved Outcomes` section.
+
+## Evidence gates: facts, policies, and blockers
+
+These three small, committed structures keep the index current without turning it into a chat log.
+
+- A **Fact Card** is a short statement that later work relies on, tied to its source paths. Add one only when the fact affects a later agent's safe behavior. When those paths change during `continuity sync`, a plan or policy update, or worker integration, Continuity marks the fact `stale`; it never silently changes its meaning or claims it was reviewed. A task whose scope overlaps a stale fact cannot be claimed until an unclaimed integration checkout records `continuity fact confirm --id F-001 --evidence 'review result'`.
+- A **policy check** is a versioned shell command in `CONTINUITY_POLICY.md`. It exists only after an explicit `continuity policy add --approved ...` receipt, so an agent cannot invent executable local policy. Relevant checks run at `finalize`; a failure checkpoints the claim and refuses to create a completion. Use `continuity policy check --scope path` to run the same selected checks deliberately.
+- A **Blocker Card** records a meaningful stall: the task/scope, current falsifiable hypothesis, actual evidence, and the next action that can create new evidence. It is not a generic todo list. An open blocker prevents overlapping tasks from being claimed. The same task, hypothesis, and evidence cannot be recorded again: the next attempt needs new evidence or a new hypothesis. Resolve it with `continuity blocker resolve --id B-001 --evidence 'new evidence'`.
+
+The compact on-disk syntax and ownership rules are in [the governance schema](.agents/skills/project-continuity/references/governance-schema.md). This is deliberately conservative: automatic behavior can only make a fact require review; it cannot fabricate approval, completion, or a fresh review result.
 
 ## Harness support
 

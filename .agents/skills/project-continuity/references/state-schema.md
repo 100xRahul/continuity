@@ -68,3 +68,9 @@ Do not retain raw chats, model reasoning, pasted code, secrets, generic advice, 
 ## Evidence and freshness
 
 Use repository-relative paths in decisions, failures, code map entries, and claim scopes. A matching fingerprint is necessary but not sufficient: inspect changed evidence anchors before trusting their associated rationale. Fingerprints use Git's tracked/unignored files, so worktree metadata and ignored build artefacts do not create false staleness.
+
+## Optional evidence gates
+
+`Fact Cards` and `Blocker Cards` are optional state sections, so existing repositories remain readable without a migration. They use strict single-line records and are validated whenever present. Fact Cards name the source and repository paths behind a compact engineering fact; an affected fresh card becomes stale during an evidence-aware synchronization or integration. A stale fact blocks only overlapping task scopes until `continuity fact confirm` records new review evidence.
+
+Blocker Cards capture the bounded handoff for a real stall rather than an open-ended task list. An open card blocks overlapping work until new evidence resolves it. The full record syntax, policy document syntax, and command boundaries are in [governance-schema.md](governance-schema.md).

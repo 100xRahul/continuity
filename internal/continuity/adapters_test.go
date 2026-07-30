@@ -19,9 +19,10 @@ func TestCrossHarnessAdaptersPointToSharedProtocol(t *testing.T) {
 		".codex/hooks/continuity.sh":                 {"codex-hook", "continuity"},
 		"opencode.json":                              {"AGENTS.md"},
 		".agents/skills/project-continuity/SKILL.md": {"name: project-continuity", "PROJECT_PLAN.md", "continuity context", "continuity integrate"},
-		".agents/skills/project-continuity/references/plan-schema.md": {"PROJECT_PLAN.md", "active_milestone", "plan approve"},
-		".agents/worktrunk/README.md":                                 {"Worktrunk", "continuity start", "each writer"},
-		".agents/worktrunk/wt.toml.example":                           {"[pre-start]", "continuity context", "continuity status"},
+		".agents/skills/project-continuity/references/plan-schema.md":       {"PROJECT_PLAN.md", "active_milestone", "plan approve"},
+		".agents/skills/project-continuity/references/governance-schema.md": {"Fact Cards", "Blocker Cards", "CONTINUITY_POLICY.md", "policy add"},
+		".agents/worktrunk/README.md":                                       {"Worktrunk", "continuity start", "each writer"},
+		".agents/worktrunk/wt.toml.example":                                 {"[pre-start]", "continuity context", "continuity status"},
 	}
 	for relative, fragments := range required {
 		contents, err := os.ReadFile(filepath.Join(root, relative))
@@ -72,6 +73,7 @@ func TestInstallAdaptersPreservesExistingInstructions(t *testing.T) {
 		"opencode.json",
 		".agents/skills/project-continuity/SKILL.md",
 		".agents/skills/project-continuity/references/plan-schema.md",
+		".agents/skills/project-continuity/references/governance-schema.md",
 		".agents/worktrunk/README.md",
 		".agents/worktrunk/wt.toml.example",
 	} {

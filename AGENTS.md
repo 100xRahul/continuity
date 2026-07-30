@@ -21,7 +21,8 @@ Treat harness memory and chat history as disposable conveniences, not authority.
 1. Use the `project-continuity` skill when available. In Codex, trust this repository's optional hooks once with `/hooks`; a trusted SessionStart hook injects a bounded live coordination snapshot automatically.
 2. Otherwise run `continuity context --owner <harness:session-id>` and `continuity status`. Codex may use `--session` as a convenience alias. Use the active claim's scope or `--scope path/to/area` to select only relevant Context Capsules; do not read the full index during routine startup.
 3. If another owner has a claim in this worktree, do not edit, revert, reinterpret, or “clean up” its changes. Work read-only, wait, or open a separate Git worktree.
-4. If state is stale, run `continuity reconcile`, inspect only the listed/mapped evidence, update durable facts, and run `continuity sync` before claiming new work.
+4. If state is stale, run `continuity reconcile`, inspect only the listed/mapped evidence, update durable facts, and run `continuity sync` before claiming new work. Sync automatically marks only affected source-linked Fact Cards stale; it never silently refreshes them.
+5. If context or `start` reports a stale Fact Card, review its named evidence and use `continuity fact confirm --id F-001 --evidence 'review result'` from an unclaimed integration checkout. If it reports an open Blocker Card, gather new evidence and resolve it before retrying overlapping work.
 
 ## Claim before writing
 
@@ -32,12 +33,18 @@ Treat harness memory and chat history as disposable conveniences, not authority.
 - Different writers require different worktrees, different branches, different approved tasks, and non-overlapping scopes. The CLI rejects a second active writer claim on the same named branch. They must not directly edit the committed project index while working.
 - Use `continuity heartbeat` or a checkpoint after material progress. Release only your own claim; recover a stale claim explicitly after inspecting `continuity status`.
 
+## Evidence gates
+
+- Add a Fact Card only for a compact, source-linked engineering fact that affects later safe behavior. Its declared code, plan, or policy paths age it automatically when they change; confirmation is an explicit review receipt, not an edit to history.
+- `CONTINUITY_POLICY.md` contains only user-approved executable checks. Add one only through `continuity policy add --approved ...` from an unclaimed integration checkout. Relevant checks run at `finalize`; a failing check checkpoints the claim and blocks completion.
+- Use `continuity blocker add` only after progress stops on the current hypothesis. Record the exact evidence and a next action that can produce new evidence. The same task/hypothesis/evidence must not be retried; resolve the blocker or form a new hypothesis first.
+
 When no task is queued, work only from an unclaimed integration checkout. In a legacy repository, use `continuity task add --approved ...` for a user-approved task. In an approved plan, an agent may use `continuity task add --derived --outcome O-001 --scope path --validates command --rationale text ...` only for a focused technical step inside the active outcome; it cannot add product scope and immediately commits the queue record. `continuity ready` ranks ready planned tasks by outcome priority and direct unblocking value, but the claimant must record why it selected one. Worktrunk users may opt into `.agents/worktrunk/wt.toml.example` for new-worktree orientation, but claims remain explicit.
 
 ## Complete safely
 
 1. Run the task's focused validation and commit the worker result.
-2. Run `continuity finalize --commit <commit> --summary ... --evidence 'command: result'`. This creates a local completion record; it does not falsely mark the shared project index complete.
+2. Run `continuity finalize --commit <commit> --summary ... --evidence 'command: result'`. Relevant approved policy checks run first. A failure checkpoints the active claim and creates no completion; a pass is retained as compact policy evidence. This command otherwise creates a local completion record and does not falsely mark the shared project index complete.
 3. Merge or hand off the commit into the integration checkout, then run `continuity integrate --id T-001`. It derives actual changed paths from the claim's Git range, writes `PROJECT_HISTORY/changes/T-001.md`, refreshes a bounded path-scoped `Change T-001` capsule, and names the actual next ready task in the handoff. Commit the generated history file with `PROJECT_STATE.md` before unrelated work.
 4. Once every linked task for an active approved outcome is integrated, run `continuity plan outcome complete --id O-001 --evidence 'focused verification: pass'`. This records a committed outcome archive. `continuity plan activate --approved --milestone M-002` then archives the completed milestone before switching active context.
 
@@ -47,5 +54,6 @@ When no task is queued, work only from an unclaimed integration checkout. In a l
 - Do not claim `autonomous: no` work. Do not invent product features; a derived task must stay inside an active approved outcome's scope and acceptance boundary.
 - Keep state claims factual and one line. Never paste raw chats, model reasoning, source code, secrets, or untrusted multiline text into durable state.
 - Keep `Context Capsules` path-scoped. The durable index may hold approximately 30k tokens, but a routine context packet must stay bounded and select only project-wide plus task-relevant capsules.
+- Do not use stale facts or open blockers as background notes. They are active gates for overlapping work and must be explicitly confirmed or resolved with new evidence.
 - Preserve completed change, outcome, and milestone history in committed `PROJECT_HISTORY/` archives. Active `Change T-*` capsules retain only the latest three short, path-scoped handoffs.
 - Stop for destructive actions, production changes, credentials, paid services, security uncertainty, unresolved product choices, repeated blockers, or unexplained validation failures.

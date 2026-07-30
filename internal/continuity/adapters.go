@@ -28,11 +28,12 @@ func InstallAdapters(root string) (InstallReport, error) {
 		".codex/hooks/continuity.sh":                 codexHookScriptTemplate,
 		"opencode.json":                              openCodeTemplate,
 		".agents/skills/project-continuity/SKILL.md": skillTemplate,
-		".agents/skills/project-continuity/agents/openai.yaml":         skillMetadataTemplate,
-		".agents/skills/project-continuity/references/state-schema.md": skillSchemaTemplate,
-		".agents/skills/project-continuity/references/plan-schema.md":  planSchemaTemplate,
-		".agents/worktrunk/README.md":                                  worktrunkReadmeTemplate,
-		".agents/worktrunk/wt.toml.example":                            worktrunkConfigTemplate,
+		".agents/skills/project-continuity/agents/openai.yaml":              skillMetadataTemplate,
+		".agents/skills/project-continuity/references/state-schema.md":      skillSchemaTemplate,
+		".agents/skills/project-continuity/references/plan-schema.md":       planSchemaTemplate,
+		".agents/skills/project-continuity/references/governance-schema.md": governanceSchemaTemplate,
+		".agents/worktrunk/README.md":                                       worktrunkReadmeTemplate,
+		".agents/worktrunk/wt.toml.example":                                 worktrunkConfigTemplate,
 	}
 	paths := make([]string, 0, len(files))
 	for path := range files {
@@ -110,7 +111,7 @@ If PROJECT_PLAN.md is draft, inspect repository facts and interview the user one
 
 Before non-trivial work, use the project-continuity skill when available. Run continuity context --owner <harness:session-id> and continuity status; Codex may use --session as a convenience alias. Use an active claim's scope or --scope path/to/area to load only relevant Context Capsules. If another owner holds this worktree, do not edit, revert, or reinterpret its changes; work read-only, wait, or use a separate Git worktree. Codex child agents are read-only in their parent checkout; give a child writer a separate worktree and claim.
 
-Before editing, run continuity ready and claim one explicit autonomous task with continuity start. Planned tasks must link to the active approved outcome and carry a focused scope plus validation command; start defaults those fields and requires an evidence-based --selection-reason. One worktree and one branch have one writer; claims reject duplicate tasks, shared branches, and overlapping scopes. From an unclaimed integration worktree, use continuity task add --approved for a user-specified task or continuity task add --derived --outcome O-001 --scope path --validates command --rationale text for a needed technical step wholly inside the active outcome. The derived route immediately commits the queue record; neither route authorizes product work. Checkpoint material progress or blockers. Commit and finalize with verification evidence, then merge/hand off and use continuity integrate to update PROJECT_STATE.md plus its generated PROJECT_HISTORY/changes record. Once every task linked to an active outcome is integrated, use continuity plan outcome complete --id O-001 --evidence 'verification: pass'; milestone activation archives completed outcome history before switching active context.
+Before editing, run continuity ready and claim one explicit autonomous task with continuity start. Planned tasks must link to the active approved outcome and carry a focused scope plus validation command; start defaults those fields and requires an evidence-based --selection-reason. One worktree and one branch have one writer; claims reject duplicate tasks, shared branches, and overlapping scopes. From an unclaimed integration worktree, use continuity task add --approved for a user-specified task or continuity task add --derived --outcome O-001 --scope path --validates command --rationale text for a needed technical step wholly inside the active outcome. The derived route immediately commits the queue record; neither route authorizes product work. A stale Fact Card or open Blocker Card overlapping the task is an active gate: inspect its evidence and explicitly confirm or resolve it before retrying. Add executable policy checks only through continuity policy add --approved after explicit user approval; relevant checks run at finalize and a failure checkpoints rather than completes the claim. Checkpoint material progress or blockers. Commit and finalize with verification evidence, then merge/hand off and use continuity integrate to update PROJECT_STATE.md plus its generated PROJECT_HISTORY/changes record. Once every task linked to an active outcome is integrated, use continuity plan outcome complete --id O-001 --evidence 'verification: pass'; milestone activation archives completed outcome history before switching active context.
 
 Do not change product intent, approved outcomes, or approval boundaries without user direction. Do not invent product features. Stop for destructive actions, production changes, credentials, external spending, security uncertainty, unresolved product choices, repeated blockers, or unexplained failures.
 `
@@ -240,9 +241,9 @@ Run continuity context --owner <harness:session-id> and continuity status; Codex
 
 When PROJECT_PLAN.md is draft, inspect repository facts and interview the user one decision at a time with a recommendation. Store compact facts, source references, assumptions, and decision cards rather than raw chat. Do not claim implementation work until the user explicitly approves the milestone with continuity plan approve --approved --milestone M-001. Treat later product, priority, constraint, and milestone changes as plan deltas.
 
-Before editing, run continuity ready and claim an approved autonomous task with continuity start. Planned tasks must link to the active approved outcome and carry a focused scope plus validation command; start defaults those fields and requires an evidence-based --selection-reason. One worktree and one branch have one writer; claims reject duplicate tasks, shared branches, and overlapping scopes. From an unclaimed integration worktree, use continuity task add --approved for a user-specified task or continuity task add --derived --outcome O-001 --scope path --validates command --rationale text for a needed technical step wholly inside the active outcome. The derived route immediately commits the queue record; neither route authorizes product work. Worktrunk users may opt into .agents/worktrunk/wt.toml.example for new-worktree orientation. Commit, finalize with verification evidence, then merge/hand off and use continuity integrate before declaring the task durable. Integration writes a committed change archive and a short path-scoped capsule; once every task for an active outcome is integrated, record its evidence-backed completion with continuity plan outcome complete before activating a later milestone.
+Before editing, run continuity ready and claim an approved autonomous task with continuity start. Planned tasks must link to the active approved outcome and carry a focused scope plus validation command; start defaults those fields and requires an evidence-based --selection-reason. One worktree and one branch have one writer; claims reject duplicate tasks, shared branches, and overlapping scopes. From an unclaimed integration worktree, use continuity task add --approved for a user-specified task or continuity task add --derived --outcome O-001 --scope path --validates command --rationale text for a needed technical step wholly inside the active outcome. The derived route immediately commits the queue record; neither route authorizes product work. Stale Fact Cards and open Blocker Cards block overlapping claims until an explicit evidence-backed confirmation or resolution. Add executable policy checks only with explicit user approval through continuity policy add --approved; relevant checks run at finalize and a failure checkpoints the claim. Worktrunk users may opt into .agents/worktrunk/wt.toml.example for new-worktree orientation. Commit, finalize with verification evidence, then merge/hand off and use continuity integrate before declaring the task durable. Integration writes a committed change archive, ages affected source-linked facts, and retains a short path-scoped capsule; once every task for an active outcome is integrated, record its evidence-backed completion with continuity plan outcome complete before activating a later milestone.
 
-Do not replace code inspection with state prose, store raw chats or reasoning, change user-owned product direction, or invent features. Read references/state-schema.md when changing state structure or resolving ownership, freshness, or integration questions.
+Do not replace code inspection with state prose, store raw chats or reasoning, change user-owned product direction, or invent features. Read references/state-schema.md when changing state structure or resolving ownership, freshness, or integration questions. Read references/governance-schema.md before adding a fact, blocker, or policy.
 `
 
 const skillMetadataTemplate = `interface:
@@ -266,6 +267,35 @@ Planned task lines additionally bind a focused technical step to an active appro
     - [ ] T-001 | Task title | outcome: O-001 | scope: internal/auth | depends: none | autonomous: yes | validates: go test ./internal/auth | accepts: Observable completion criteria. | derived: Why this is the best next step.
 
 Only autonomous tasks with explicit acceptance criteria can be claimed by a fresh agent. Planned claims require a one-line selection reason and default to their task's scope and validation; task scopes may not exceed the outcome scope. PROJECT_PLAN.md is the detailed delivery contract; PROJECT_STATE.md stores approximately 30k tokens of bounded active truth. Context Capsules keep that knowledge path-indexed and continuity context --scope keeps routine prompts selective. Git's local common directory stores live claims, heartbeats, and completions for same-machine worktrees. Use continuity integrate only after the verified worker commit is present in the integration checkout; it writes a full PROJECT_HISTORY/changes record and retains only the newest three generated short capsules in active state.
+
+Optional Fact Cards and Blocker Cards are strict compact sections in PROJECT_STATE.md. Fresh facts age when their source paths change, stale facts and open blockers gate only overlapping claims, and fresh review or resolution always needs explicit new evidence. CONTINUITY_POLICY.md contains only user-approved finalize commands. See references/governance-schema.md for exact syntax.
+`
+
+const governanceSchemaTemplate = `# Evidence gate schema
+
+These optional, committed records preserve source-backed engineering knowledge without storing chat history or hidden harness memory.
+
+## Fact Cards in PROJECT_STATE.md
+
+    - [fresh] F-001 | source: D-001 | paths: internal/auth, api/auth | verified: 2026-07-30T12:00:00Z | evidence: Focused review passed. | summary: Auth boundary preserves token invalidation.
+
+Use fresh or stale. Source paths are repository-relative code, plan, or policy evidence paths. An affected fresh card becomes stale during evidence-aware synchronization or integration; it never becomes fresh without continuity fact confirm and new review evidence. A stale fact blocks overlapping task claims.
+
+## Blocker Cards in PROJECT_STATE.md
+
+    - [open] B-001 | task: T-014 | scope: internal/auth | hypothesis: Test identity provider is unreachable. | evidence: Connection refused from focused test. | next: Obtain a reachable local provider. | resolution: none
+
+Use open or resolved. Record a blocker only after progress stops; the same task, hypothesis, and evidence must not be retried. An open blocker blocks overlapping claims until continuity blocker resolve records new evidence.
+
+## Policy checks in CONTINUITY_POLICY.md
+
+    ### P-001
+    Scope: internal/auth
+    Phase: finalize
+    Command: go test ./internal/auth
+    Reason: Authentication changes require focused verification.
+
+Add a policy only through explicit user-approved continuity policy add --approved. Relevant checks run before finalization; failure checkpoints the claim and creates no completion. Policy output is not copied into durable state.
 `
 
 const planSchemaTemplate = `# Delivery plan schema

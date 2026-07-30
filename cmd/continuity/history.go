@@ -88,6 +88,18 @@ func selectNextWork(root string, state *continuity.State) (nextWork, error) {
 	if err != nil {
 		return nextWork{}, err
 	}
+	if len(candidates) > 0 {
+		candidate, blocked, err := nextActionableCandidate(state, candidates)
+		if err != nil {
+			return nextWork{}, err
+		}
+		if blocked != nil {
+			return *blocked, nil
+		}
+		if candidate != nil {
+			return nextWorkForCandidate(*candidate), nil
+		}
+	}
 	if len(candidates) == 0 {
 		if plan != nil && plan.Meta["status"] == "approved" {
 			outcome, linked, err := completableActiveOutcome(plan, state)
@@ -110,7 +122,65 @@ func selectNextWork(root string, state *continuity.State) (nextWork, error) {
 			Action:  "Run continuity ready and wait for user-approved work before changing product scope.",
 		}, nil
 	}
-	candidate := candidates[0]
+	// All ready tasks were blocked by a stale fact or blocker card. The
+	// actionable handoff was returned above; this branch is unreachable unless
+	// a future selection rule adds an unhandled gate.
+	return nextWork{Summary: "No ready task can proceed.", Action: "Run continuity context and resolve the reported fact or blocker gate before retrying."}, nil
+}
+
+func nextActionableCandidate(state *continuity.State, candidates []readyCandidate) (*readyCandidate, *nextWork, error) {
+	facts, err := state.FactCards()
+	if err != nil {
+		return nil, nil, err
+	}
+	blockers, err := state.BlockerCards()
+	if err != nil {
+		return nil, nil, err
+	}
+	var staleFact *continuity.FactCard
+	var staleTask *readyCandidate
+	var blocker *continuity.BlockerCard
+	var blockerTask *readyCandidate
+	for index := range candidates {
+		candidate := &candidates[index]
+		scope := candidate.Task.Scope
+		if len(scope) == 0 {
+			scope = []string{"."}
+		}
+		if stale := continuity.StaleFactCardsForScopes(facts, scope); len(stale) > 0 {
+			if staleFact == nil {
+				fact := stale[0]
+				staleFact, staleTask = &fact, candidate
+			}
+			continue
+		}
+		if open := continuity.OpenBlockerCardsForScopes(blockers, scope); len(open) > 0 {
+			if blocker == nil {
+				card := open[0]
+				blocker, blockerTask = &card, candidate
+			}
+			continue
+		}
+		return candidate, nil, nil
+	}
+	if staleFact != nil {
+		work := nextWork{
+			Summary: fmt.Sprintf("%s — stale fact from %s blocks %s.", staleFact.ID, staleFact.Source, staleTask.Task.ID),
+			Action:  fmt.Sprintf("Run continuity context --scope %s, inspect the changed evidence, then from an unclaimed integration checkout run continuity fact confirm --id %s --evidence 'review result' before claiming %s.", strings.Join(staleFact.Paths, ","), staleFact.ID, staleTask.Task.ID),
+		}
+		return nil, &work, nil
+	}
+	if blocker != nil {
+		work := nextWork{
+			Summary: fmt.Sprintf("%s — open blocker for %s prevents %s.", blocker.ID, blocker.TaskID, blockerTask.Task.ID),
+			Action:  fmt.Sprintf("Gather new evidence for %s, then run continuity blocker resolve --id %s --evidence 'new evidence' before retrying %s.", blocker.ID, blocker.ID, blockerTask.Task.ID),
+		}
+		return nil, &work, nil
+	}
+	return nil, nil, nil
+}
+
+func nextWorkForCandidate(candidate readyCandidate) nextWork {
 	scope := "."
 	if len(candidate.Task.Scope) > 0 {
 		scope = strings.Join(candidate.Task.Scope, ",")
@@ -121,7 +191,7 @@ func selectNextWork(root string, state *continuity.State) (nextWork, error) {
 		return nextWork{
 			Summary: summary,
 			Action:  fmt.Sprintf("Run continuity context --scope %s and continuity ready, then claim %s with an evidence-based --selection-reason.", scope, candidate.Task.ID),
-		}, nil
+		}
 	}
 	if candidate.Unblocks > 0 {
 		summary += fmt.Sprintf(" | unblocks: %d", candidate.Unblocks)
@@ -129,7 +199,7 @@ func selectNextWork(root string, state *continuity.State) (nextWork, error) {
 	return nextWork{
 		Summary: summary,
 		Action:  fmt.Sprintf("Run continuity context --scope %s and claim %s with continuity start.", scope, candidate.Task.ID),
-	}, nil
+	}
 }
 
 // completableActiveOutcome finds the highest-priority active outcome whose

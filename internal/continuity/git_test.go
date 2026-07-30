@@ -50,6 +50,27 @@ func TestReviewAnchorsAndChangedSinceState(t *testing.T) {
 	if got := strings.Join(changed, "\n"); !strings.Contains(got, "src/parser.go") {
 		t.Fatalf("changes since state = %q", got)
 	}
+	paths, err := ChangedPathsSinceState(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := strings.Join(paths, ","), "src/parser.go"; got != want {
+		t.Fatalf("changed paths since state = %q, want %q", got, want)
+	}
+}
+
+func TestEnsureGitRepoCreatesMissingDirectory(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "new", "repository")
+	initialized, err := EnsureGitRepo(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !samePath(initialized, root) {
+		t.Fatalf("initialized root = %q, want %q", initialized, root)
+	}
+	if _, err := os.Stat(filepath.Join(root, ".git")); err != nil {
+		t.Fatalf("new Git repository is missing .git: %v", err)
+	}
 }
 
 func TestFingerprintUsesGitFilesAndHonorsIgnoreRules(t *testing.T) {
