@@ -58,7 +58,7 @@ func TestLifecycleCommands(t *testing.T) {
 	if !strings.Contains(finished.Section("Recent Material Changes"), "Integrated T-001") {
 		t.Fatalf("integration was not recorded: %s", finished.Section("Recent Material Changes"))
 	}
-	if !strings.Contains(finished.Section("Handoff"), "Last completed: T-001 — Lifecycle command test passed.") || !strings.Contains(finished.Section("Handoff"), "Run continuity status") {
+	if !strings.Contains(finished.Section("Handoff"), "Last completed: T-001 — Lifecycle command test passed.") || !strings.Contains(finished.Section("Handoff"), "Run continuity status") || !strings.Contains(finished.Section("Handoff"), "continuity ready") {
 		t.Fatalf("integration did not refresh handoff: %s", finished.Section("Handoff"))
 	}
 	if _, err := os.Stat(filepath.Join(root, continuity.StateFilename)); err != nil {
@@ -103,6 +103,9 @@ func TestStartRejectsNonAutonomousTask(t *testing.T) {
 		t.Fatal(err)
 	}
 	state := continuity.NewTemplate(filepath.Join(root, continuity.StateFilename), "Test", "Test approval boundary.", continuity.Snapshot(root), fingerprint)
+	if err := state.ReplaceSection("Ready Queue", "- [ ] T-001 | User decision | depends: none | autonomous: no | accepts: User approves the direction."); err != nil {
+		t.Fatal(err)
+	}
 	if err := state.Save(); err != nil {
 		t.Fatal(err)
 	}

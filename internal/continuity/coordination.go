@@ -24,23 +24,24 @@ const (
 // Git's common directory rather than a worktree so linked worktrees on one
 // machine see the same ownership information without creating merge conflicts.
 type Claim struct {
-	Schema       int       `json:"schema"`
-	TaskID       string    `json:"task_id"`
-	Owner        string    `json:"owner"`
-	Worktree     string    `json:"worktree"`
-	Branch       string    `json:"branch"`
-	Scope        []string  `json:"scope"`
-	Goal         string    `json:"goal"`
-	Acceptance   string    `json:"acceptance"`
-	Mode         string    `json:"mode"`
-	NextAction   string    `json:"next_action"`
-	Validation   string    `json:"validation"`
-	Progress     string    `json:"progress,omitempty"`
-	Risk         string    `json:"risk,omitempty"`
-	CreatedAt    time.Time `json:"created_at"`
-	HeartbeatAt  time.Time `json:"heartbeat_at"`
-	LeaseExpires time.Time `json:"lease_expires"`
-	Nonce        string    `json:"nonce"`
+	Schema          int       `json:"schema"`
+	TaskID          string    `json:"task_id"`
+	Owner           string    `json:"owner"`
+	Worktree        string    `json:"worktree"`
+	Branch          string    `json:"branch"`
+	Scope           []string  `json:"scope"`
+	Goal            string    `json:"goal"`
+	Acceptance      string    `json:"acceptance"`
+	Mode            string    `json:"mode"`
+	NextAction      string    `json:"next_action"`
+	Validation      string    `json:"validation"`
+	SelectionReason string    `json:"selection_reason,omitempty"`
+	Progress        string    `json:"progress,omitempty"`
+	Risk            string    `json:"risk,omitempty"`
+	CreatedAt       time.Time `json:"created_at"`
+	HeartbeatAt     time.Time `json:"heartbeat_at"`
+	LeaseExpires    time.Time `json:"lease_expires"`
+	Nonce           string    `json:"nonce"`
 }
 
 func (c Claim) Stale(now time.Time) bool {
@@ -63,17 +64,18 @@ type Completion struct {
 }
 
 type ClaimRequest struct {
-	TaskID     string
-	Owner      string
-	Worktree   string
-	Branch     string
-	Scope      []string
-	Goal       string
-	Acceptance string
-	Mode       string
-	NextAction string
-	Validation string
-	Lease      time.Duration
+	TaskID          string
+	Owner           string
+	Worktree        string
+	Branch          string
+	Scope           []string
+	Goal            string
+	Acceptance      string
+	Mode            string
+	NextAction      string
+	Validation      string
+	SelectionReason string
+	Lease           time.Duration
 }
 
 type CheckpointRequest struct {
@@ -161,7 +163,7 @@ func ClaimTask(directory string, request ClaimRequest) (Claim, error) {
 		if !validCoordinationTaskID(request.TaskID) {
 			return fmt.Errorf("invalid task ID %q", request.TaskID)
 		}
-		if !singleLine(request.Owner) || !singleLineOrEmpty(request.Goal) || !singleLineOrEmpty(request.Acceptance) || !singleLineOrEmpty(request.NextAction) || !singleLineOrEmpty(request.Validation) {
+		if !singleLine(request.Owner) || !singleLineOrEmpty(request.Goal) || !singleLineOrEmpty(request.Acceptance) || !singleLineOrEmpty(request.NextAction) || !singleLineOrEmpty(request.Validation) || !singleLineOrEmpty(request.SelectionReason) {
 			return errors.New("claim fields must be single-line text")
 		}
 		branch := strings.TrimSpace(request.Branch)
@@ -227,21 +229,22 @@ func ClaimTask(directory string, request ClaimRequest) (Claim, error) {
 			return err
 		}
 		created = Claim{
-			Schema:       1,
-			TaskID:       request.TaskID,
-			Owner:        request.Owner,
-			Worktree:     worktree,
-			Branch:       branch,
-			Scope:        scope,
-			Goal:         request.Goal,
-			Acceptance:   request.Acceptance,
-			Mode:         request.Mode,
-			NextAction:   request.NextAction,
-			Validation:   request.Validation,
-			CreatedAt:    now,
-			HeartbeatAt:  now,
-			LeaseExpires: now.Add(lease),
-			Nonce:        nonce,
+			Schema:          1,
+			TaskID:          request.TaskID,
+			Owner:           request.Owner,
+			Worktree:        worktree,
+			Branch:          branch,
+			Scope:           scope,
+			Goal:            request.Goal,
+			Acceptance:      request.Acceptance,
+			Mode:            request.Mode,
+			NextAction:      request.NextAction,
+			Validation:      request.Validation,
+			SelectionReason: request.SelectionReason,
+			CreatedAt:       now,
+			HeartbeatAt:     now,
+			LeaseExpires:    now.Add(lease),
+			Nonce:           nonce,
 		}
 		if err := writeJSONAtomic(filepath.Join(claimDir, "claim.json"), created, 0o600); err != nil {
 			_ = os.Remove(claimDir)

@@ -56,7 +56,8 @@ Only the approved active milestone becomes executable. Later roadmap items remai
 new session
   -> continuity context --owner <harness:session-id>
   -> continuity status
-  -> continuity start --id T-001 --owner <harness:session-id> --scope path/to/area ...
+  -> continuity ready
+  -> continuity start --id T-001 --owner <harness:session-id> --selection-reason "why this is the best ready step"
   -> work + continuity checkpoint
   -> commit + continuity finalize --commit <commit> --evidence 'test: pass'
   -> merge/handoff worker commit
@@ -86,8 +87,8 @@ continuity status                 show active claims and pending completions
 continuity check                  validate durable state, task graph, and freshness
 continuity reconcile              list relevant changes since durable synchronization
 continuity sync                   refresh durable Git facts after reconciliation
-continuity ready                  list unclaimed autonomous ready tasks
-continuity task add               add one explicitly user-approved task before any claim exists
+continuity ready                  rank unclaimed autonomous ready tasks with selection evidence
+continuity task add               record a user-specified or plan-bounded derived task before any claim exists
 continuity plan                   create, validate, approve, activate, and inspect the delivery plan
 continuity start                  atomically claim a task/worktree/scope
 continuity heartbeat              refresh an owned claim lease
@@ -98,15 +99,33 @@ continuity finalize               record a committed, verified worker result
 continuity integrate              project a merged worker result into PROJECT_STATE.md
 ```
 
-Tasks use one fixed line format:
+Legacy repositories can keep the compact queue format:
 
 ```md
 - [ ] T-014 | Hash password reset tokens | depends: T-013 | autonomous: yes | accepts: Focused tests pass and plaintext tokens are absent from storage.
 ```
 
-Only `autonomous: yes` tasks can be claimed by an agent. Missing scope means `.`—the whole repository—and intentionally prevents parallel work.
+Only `autonomous: yes` tasks can be claimed by an agent. For legacy tasks, an omitted claim scope means `.`—the whole repository—and intentionally prevents parallel work.
 
-`continuity task add --approved ...` is the safe planning route for a user-approved task before a worktree has a writer claim. The explicit flag records acknowledgement; it does not let an agent invent product work. A writer claim also requires a named Git branch, and a second active writer on that branch is rejected.
+After a plan is approved, executable tasks use a focused contract instead:
+
+```md
+- [ ] T-014 | Hash password reset tokens | outcome: O-003 | scope: api/auth, internal/auth | depends: T-013 | autonomous: yes | validates: go test ./api/auth ./internal/auth | accepts: Focused tests pass and plaintext tokens are absent from storage. | derived: It closes the highest-risk storage gap before endpoint work.
+```
+
+The task's outcome must belong to the active milestone, its scope must be contained by that outcome's scope, and it must name a focused validation command. `continuity ready` orders candidates by active-outcome priority, direct unblocking value, then task ID; the agent still makes the choice and records its evidence with `--selection-reason` when it claims the task. Planned `start` calls default the goal, acceptance, validation, and scope from the durable task contract, so the agent does not have to restate them.
+
+From an unclaimed integration checkout, a user may add a specified planned task with `--approved`. An agent may instead create a needed technical subtask only inside an already-active outcome:
+
+```text
+continuity task add --derived --id T-014 --title "Hash password reset tokens" \
+  --outcome O-003 --scope api/auth,internal/auth \
+  --validates "go test ./api/auth ./internal/auth" \
+  --accepts "Focused tests pass and plaintext tokens are absent from storage." \
+  --rationale "It closes the highest-risk storage gap before endpoint work."
+```
+
+That command immediately commits the queue record, so other worktrees and harnesses can see it. It cannot add product scope: it rejects a draft plan, inactive or unknown outcomes, broad scopes, missing validation, and a missing derivation rationale. In a legacy repository without `PROJECT_PLAN.md`, `continuity task add --approved ...` remains the explicit user-approval route. A writer claim also requires a named Git branch, and a second active writer on that branch is rejected.
 
 ## State and freshness
 

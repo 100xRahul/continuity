@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -83,7 +84,7 @@ Usage:
   continuity reconcile [--repo .]
   continuity sync [--repo .]
   continuity ready [--repo .]
-  continuity task add --approved --id T-001 --title text --accepts text [--depends none] [--autonomous yes|no] [--repo .]
+  continuity task add --id T-001 --title text --accepts text [--approved|--derived --rationale text --outcome O-001 --scope path --validates command] [--depends none] [--autonomous yes|no] [--repo .]
   continuity plan init --intent text [--project name] [--repo .]
   continuity plan validate|status [--repo .]
   continuity plan approve --approved --milestone M-001 [--repo .]
@@ -96,7 +97,7 @@ Usage:
   continuity heartbeat [--id T-001] --session id [--repo .]
   continuity release [--id T-001] --session id [--repo .]
   continuity recover-lock --force [--repo .]
-  continuity start --id T-001 --goal text --acceptance text --next-action text [--session id|--owner id] [--mode strict|soft|exploratory] [--scope path,...] [--validation command] [--repo .]
+  continuity start --id T-001 [--goal text] [--acceptance text] [--next-action text] [--selection-reason text] [--session id|--owner id] [--mode strict|soft|exploratory] [--scope path,...] [--validation command] [--repo .]
   continuity checkpoint [--id T-001] --summary text --next-action text [--risk text] [--session id|--owner id] [--repo .]
   continuity finalize [--id T-001] --commit revision --summary text --evidence 'command: result; command: result' [--session id|--owner id] [--repo .]
   continuity integrate --id T-001 [--repo .]
@@ -214,8 +215,9 @@ func checkCommand(args []string) error {
 		return err
 	}
 	result := state.Validate(*budget)
-	if plan, planErr := loadOptionalPlan(root); planErr != nil {
-		result.Errorf("delivery plan: %v", planErr)
+	var plan *continuity.Plan
+	if plan, err = loadOptionalPlan(root); err != nil {
+		result.Errorf("delivery plan: %v", err)
 	} else if plan != nil {
 		planResult := plan.Validate()
 		for _, warning := range planResult.Warnings {
@@ -253,6 +255,16 @@ func checkCommand(args []string) error {
 		known := map[string]continuity.Task{}
 		for _, task := range tasks {
 			known[task.ID] = task
+			// Historic completed legacy tasks and draft-only human gates remain
+			// readable during adoption. Every task that can autonomously execute
+			// must be bounded by the currently approved plan outcome.
+			if plan != nil && task.Outcome != "" {
+				if _, err := validateTaskPlanContract(plan, task, task.Status != "x"); err != nil {
+					result.Errorf("task %s plan contract: %v", task.ID, err)
+				}
+			} else if plan != nil && task.Autonomous && task.Status != "x" {
+				result.Errorf("task %s plan contract: task does not link to an approved outcome", task.ID)
+			}
 		}
 		claims, err := continuity.ListClaims(root)
 		if err != nil {
@@ -359,6 +371,87 @@ func syncCommand(args []string) error {
 	return nil
 }
 
+type readyCandidate struct {
+	Task            continuity.Task
+	Outcome         *continuity.Outcome
+	OutcomePriority int
+	Unblocks        int
+}
+
+// readyCandidates presents evidence for an agent's choice but deliberately
+// does not claim on its behalf. The agent still records why the suggested task
+// is the best next step when it calls start.
+func readyCandidates(state *continuity.State, plan *continuity.Plan, claims []continuity.Claim) ([]readyCandidate, error) {
+	if plan != nil && plan.Meta["status"] != "approved" {
+		return nil, nil
+	}
+	all, err := continuity.ParseTasks(state.Section("Ready Queue"))
+	if err != nil {
+		return nil, err
+	}
+	if plan != nil {
+		for _, task := range all {
+			if task.Outcome != "" {
+				if _, err := validateTaskPlanContract(plan, task, task.Status != "x"); err != nil {
+					return nil, fmt.Errorf("task %s: %w", task.ID, err)
+				}
+			} else if task.Autonomous && task.Status != "x" {
+				return nil, fmt.Errorf("task %s does not link to an approved outcome", task.ID)
+			}
+		}
+	}
+	ready, err := continuity.ReadyTasks(state.Section("Ready Queue"))
+	if err != nil {
+		return nil, err
+	}
+	claimed := map[string]bool{}
+	for _, claim := range claims {
+		claimed[claim.TaskID] = true
+	}
+	candidates := make([]readyCandidate, 0, len(ready))
+	for _, task := range ready {
+		if claimed[task.ID] {
+			continue
+		}
+		candidate := readyCandidate{Task: task, Unblocks: directUnblocks(task.ID, all)}
+		if plan != nil {
+			outcome, err := validateTaskPlanContract(plan, task, true)
+			if err != nil {
+				return nil, err
+			}
+			candidate.Outcome = &outcome
+			candidate.OutcomePriority = outcome.Priority
+		}
+		candidates = append(candidates, candidate)
+	}
+	sort.SliceStable(candidates, func(left, right int) bool {
+		if candidates[left].OutcomePriority != candidates[right].OutcomePriority {
+			return candidates[left].OutcomePriority < candidates[right].OutcomePriority
+		}
+		if candidates[left].Unblocks != candidates[right].Unblocks {
+			return candidates[left].Unblocks > candidates[right].Unblocks
+		}
+		return candidates[left].Task.ID < candidates[right].Task.ID
+	})
+	return candidates, nil
+}
+
+func directUnblocks(taskID string, tasks []continuity.Task) int {
+	unblocks := 0
+	for _, task := range tasks {
+		if task.Status == "x" {
+			continue
+		}
+		for _, dependency := range task.DependsOn {
+			if dependency == taskID {
+				unblocks++
+				break
+			}
+		}
+	}
+	return unblocks
+}
+
 func readyCommand(args []string) error {
 	root, err := parseRepo(args, "ready")
 	if err != nil {
@@ -374,38 +467,85 @@ func readyCommand(args []string) error {
 	if err := requireFreshState(root, state); err != nil {
 		return err
 	}
-	tasks, err := continuity.ReadyTasks(state.Section("Ready Queue"))
+	plan, err := loadOptionalPlan(root)
 	if err != nil {
-		return err
+		return fmt.Errorf("load delivery plan: %w", err)
+	}
+	if plan != nil {
+		if result := plan.Validate(); !result.OK() {
+			return fmt.Errorf("delivery plan is invalid: %s", strings.Join(result.Errors, "; "))
+		}
 	}
 	claims, err := continuity.ListClaims(root)
 	if err != nil {
 		return err
 	}
+	candidates, err := readyCandidates(state, plan, claims)
+	if err != nil {
+		return fmt.Errorf("ready task contract: %w", err)
+	}
+	if len(candidates) == 0 {
+		if plan != nil && plan.Meta["status"] != "approved" {
+			fmt.Println("No autonomous ready tasks: the delivery plan is still a draft.")
+		} else {
+			fmt.Println("No autonomous ready tasks.")
+			for _, blocked := range blockedAutonomousTasks(state, claims) {
+				fmt.Println("Blocked:", blocked)
+			}
+			if plan != nil && plan.Meta["status"] == "approved" {
+				fmt.Println("If no task is blocked, inspect the active approved outcome and derive only the next focused technical step from an unclaimed integration checkout.")
+			}
+		}
+		return nil
+	}
+	for _, candidate := range candidates {
+		fmt.Printf("%s | %s", candidate.Task.ID, candidate.Task.Title)
+		if candidate.Outcome != nil {
+			fmt.Printf(" | outcome: %s (priority %d) | scope: %s", candidate.Outcome.ID, candidate.OutcomePriority, strings.Join(candidate.Task.Scope, ", "))
+		}
+		fmt.Printf(" | unblocks: %d\n", candidate.Unblocks)
+	}
+	fmt.Println("Order uses active-outcome priority, direct unblocks, then task ID. Before claiming, record the evidence-based selection reason with continuity start.")
+	return nil
+}
+
+func blockedAutonomousTasks(state *continuity.State, claims []continuity.Claim) []string {
+	tasks, err := continuity.ParseTasks(state.Section("Ready Queue"))
+	if err != nil {
+		return nil
+	}
+	byID := make(map[string]continuity.Task, len(tasks))
+	for _, task := range tasks {
+		byID[task.ID] = task
+	}
 	claimed := map[string]bool{}
 	for _, claim := range claims {
 		claimed[claim.TaskID] = true
 	}
-	ready := 0
+	blocked := []string{}
 	for _, task := range tasks {
-		if claimed[task.ID] {
+		if task.Status != " " || !task.Autonomous || claimed[task.ID] {
 			continue
 		}
-		ready++
-		fmt.Printf("%s | %s\n", task.ID, task.Title)
+		waiting := []string{}
+		for _, dependency := range task.DependsOn {
+			if prerequisite, exists := byID[dependency]; !exists || prerequisite.Status != "x" {
+				waiting = append(waiting, dependency)
+			}
+		}
+		if len(waiting) > 0 {
+			blocked = append(blocked, fmt.Sprintf("%s waits for %s", task.ID, strings.Join(waiting, ", ")))
+		}
 	}
-	if ready == 0 {
-		fmt.Println("No autonomous ready tasks.")
-	}
-	return nil
+	return blocked
 }
 
-// taskCommand provides the explicit, user-approved planning route that is
-// safe before a worktree has a writer claim. It intentionally does not infer
-// product work: callers must acknowledge approval with --approved.
+// taskCommand adds work only from an unclaimed integration checkout. Legacy
+// repositories use an explicit user approval; approved delivery plans also
+// permit a compact agent-derived technical task inside an existing outcome.
 func taskCommand(args []string) error {
 	if len(args) == 0 || args[0] != "add" {
-		return errors.New("usage: continuity task add --approved --id T-001 --title text --accepts text")
+		return errors.New("usage: continuity task add --id T-001 --title text --accepts text [--approved|--derived --rationale text --outcome O-001 --scope path --validates command]")
 	}
 	return taskAddCommand(args[1:])
 }
@@ -420,11 +560,13 @@ func taskAddCommand(args []string) error {
 	autonomous := flags.String("autonomous", "yes", "whether an agent may claim the task: yes or no")
 	acceptance := flags.String("accepts", "", "observable completion criteria")
 	approved := flags.Bool("approved", false, "confirm that a user approved this task")
+	outcomeID := flags.String("outcome", "", "active approved outcome for a planned implementation task")
+	scope := flags.String("scope", "", "comma-separated focused repository-relative paths")
+	validation := flags.String("validates", "", "focused validation command for a planned implementation task")
+	derived := flags.Bool("derived", false, "record an agent-derived technical task within the approved outcome")
+	rationale := flags.String("rationale", "", "one-line reason this derived task is the best next technical step")
 	if err := flags.Parse(args); err != nil {
 		return err
-	}
-	if !*approved {
-		return errors.New("--approved is required; Continuity cannot infer a new product task")
 	}
 	if *autonomous != "yes" && *autonomous != "no" {
 		return errors.New("--autonomous must be yes or no")
@@ -437,10 +579,21 @@ func taskAddCommand(args []string) error {
 	}); err != nil {
 		return err
 	}
+	for name, value := range map[string]string{
+		"--outcome":   *outcomeID,
+		"--scope":     *scope,
+		"--validates": *validation,
+		"--rationale": *rationale,
+	} {
+		if strings.ContainsAny(value, "\r\n") {
+			return fmt.Errorf("%s must be one line", name)
+		}
+	}
 	root, err := repoRoot(*repo)
 	if err != nil {
 		return err
 	}
+	var taskCommit string
 	if err := continuity.WithCoordinationLock(root, func() error {
 		if claim, err := continuity.FindClaimForWorktree(root); err != nil {
 			return err
@@ -457,12 +610,85 @@ func taskAddCommand(args []string) error {
 		if err := requireFreshState(root, state); err != nil {
 			return err
 		}
+		plan, err := loadOptionalPlan(root)
+		if err != nil {
+			return fmt.Errorf("load delivery plan: %w", err)
+		}
+		if plan != nil {
+			if result := plan.Validate(); !result.OK() {
+				return fmt.Errorf("delivery plan is invalid: %s", strings.Join(result.Errors, "; "))
+			}
+		}
+		var task continuity.Task
+		if plan == nil {
+			if !*approved {
+				return errors.New("--approved is required; Continuity cannot infer a new product task")
+			}
+			if *derived || strings.TrimSpace(*outcomeID) != "" || strings.TrimSpace(*scope) != "" || strings.TrimSpace(*validation) != "" || strings.TrimSpace(*rationale) != "" {
+				return errors.New("--derived, --outcome, --scope, --validates, and --rationale require an approved PROJECT_PLAN.md")
+			}
+			task = continuity.Task{
+				ID:         *id,
+				Title:      *title,
+				DependsOn:  parseTaskDependencies(*depends),
+				Autonomous: *autonomous == "yes",
+				Acceptance: *acceptance,
+			}
+		} else {
+			if plan.Meta["status"] != "approved" {
+				return errors.New("cannot add an implementation task while the delivery plan is a draft; approve the milestone first")
+			}
+			if *approved == *derived {
+				return errors.New("an approved plan task needs exactly one provenance: --approved for a user-specified task or --derived for an agent-derived technical task")
+			}
+			if err := requireSingleLine(map[string]string{
+				"--outcome":   *outcomeID,
+				"--scope":     *scope,
+				"--validates": *validation,
+			}); err != nil {
+				return err
+			}
+			if *derived {
+				if err := requireSingleLine(map[string]string{"--rationale": *rationale}); err != nil {
+					return err
+				}
+			} else if strings.TrimSpace(*rationale) != "" {
+				return errors.New("--rationale is only valid with --derived")
+			}
+			taskScope, err := planPaths(*scope)
+			if err != nil {
+				return err
+			}
+			task = continuity.Task{
+				ID:         *id,
+				Title:      *title,
+				Outcome:    *outcomeID,
+				Scope:      taskScope,
+				DependsOn:  parseTaskDependencies(*depends),
+				Autonomous: *autonomous == "yes",
+				Validation: *validation,
+				Acceptance: *acceptance,
+			}
+			if *derived {
+				task.Rationale = *rationale
+			}
+			if _, err := validateTaskPlanContract(plan, task, true); err != nil {
+				return fmt.Errorf("task contract: %w", err)
+			}
+			if err := continuity.EnsureCommitIdentity(root); err != nil {
+				return err
+			}
+		}
 		queue, err := continuity.AddTask(state.Section("Ready Queue"), continuity.Task{
-			ID:         *id,
-			Title:      *title,
-			DependsOn:  parseTaskDependencies(*depends),
-			Autonomous: *autonomous == "yes",
-			Acceptance: *acceptance,
+			ID:         task.ID,
+			Title:      task.Title,
+			Outcome:    task.Outcome,
+			Scope:      task.Scope,
+			DependsOn:  task.DependsOn,
+			Autonomous: task.Autonomous,
+			Validation: task.Validation,
+			Acceptance: task.Acceptance,
+			Rationale:  task.Rationale,
 		})
 		if err != nil {
 			return err
@@ -473,11 +699,24 @@ func taskAddCommand(args []string) error {
 		if err := synchronize(state, root); err != nil {
 			return err
 		}
-		return state.Save()
+		if err := state.Save(); err != nil {
+			return err
+		}
+		if plan != nil {
+			taskCommit, err = continuity.CommitFiles(root, "docs(tasks): queue "+task.ID, continuity.StateFilename)
+			return err
+		}
+		return nil
 	}); err != nil {
 		return err
 	}
-	fmt.Println("added approved task", *id)
+	if *derived {
+		fmt.Printf("added derived task %s for %s and committed %s\n", *id, *outcomeID, taskCommit)
+	} else if taskCommit != "" {
+		fmt.Printf("added approved task %s and committed %s\n", *id, taskCommit)
+	} else {
+		fmt.Println("added approved task", *id)
+	}
 	return nil
 }
 
@@ -486,24 +725,32 @@ func startCommand(args []string) error {
 	flags.SetOutput(os.Stderr)
 	repo := flags.String("repo", ".", "repository path")
 	id := flags.String("id", "", "task ID")
-	goal := flags.String("goal", "", "task goal")
-	acceptance := flags.String("acceptance", "", "observable task completion criteria")
-	nextAction := flags.String("next-action", "", "first concrete action")
+	goal := flags.String("goal", "", "task goal; defaults to the queued task title")
+	acceptance := flags.String("acceptance", "", "completion criteria; defaults to the queued task contract")
+	nextAction := flags.String("next-action", "", "first concrete action; defaults to reading scoped context")
 	mode := flags.String("mode", "strict", "strict, soft, or exploratory")
-	scope := flags.String("scope", "", "comma-separated repository-relative paths")
-	validation := flags.String("validation", "", "preferred validation command")
+	scope := flags.String("scope", "", "comma-separated repository-relative paths; defaults to the queued task scope")
+	validation := flags.String("validation", "", "validation command; defaults to the queued task contract")
+	selectionReason := flags.String("selection-reason", "", "why this ready task best advances, unblocks, or de-risks the approved outcome")
 	session := flags.String("session", "", "Codex session ID from continuity context")
 	owner := flags.String("owner", "", "stable worker identity")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
-	if err := requireSingleLine(map[string]string{
-		"--id":          *id,
-		"--goal":        *goal,
-		"--acceptance":  *acceptance,
-		"--next-action": *nextAction,
-	}); err != nil {
+	if err := requireSingleLine(map[string]string{"--id": *id}); err != nil {
 		return err
+	}
+	for name, value := range map[string]string{
+		"--goal":             *goal,
+		"--acceptance":       *acceptance,
+		"--next-action":      *nextAction,
+		"--scope":            *scope,
+		"--validation":       *validation,
+		"--selection-reason": *selectionReason,
+	} {
+		if strings.ContainsAny(value, "\r\n") {
+			return fmt.Errorf("%s must be one line", name)
+		}
 	}
 	if *mode != "strict" && *mode != "soft" && *mode != "exploratory" {
 		return errors.New("--mode must be strict, soft, or exploratory")
@@ -521,6 +768,18 @@ func startCommand(args []string) error {
 	}
 	if err := requireFreshState(root, state); err != nil {
 		return err
+	}
+	plan, err := loadOptionalPlan(root)
+	if err != nil {
+		return fmt.Errorf("load delivery plan: %w", err)
+	}
+	if plan != nil {
+		if result := plan.Validate(); !result.OK() {
+			return fmt.Errorf("delivery plan is invalid: %s", strings.Join(result.Errors, "; "))
+		}
+		if plan.Meta["status"] != "approved" {
+			return errors.New("delivery plan is still a draft; explicit plan approval is required before claiming implementation work")
+		}
 	}
 	tasks, err := continuity.ParseTasks(state.Section("Ready Queue"))
 	if err != nil {
@@ -550,6 +809,61 @@ func startCommand(args []string) error {
 			return fmt.Errorf("task %s has unfinished dependency %s", *id, dependency)
 		}
 	}
+	claimScope := parseScope(*scope)
+	claimGoal := strings.TrimSpace(*goal)
+	if claimGoal == "" {
+		claimGoal = selected.Title
+	}
+	claimAcceptance := strings.TrimSpace(*acceptance)
+	if claimAcceptance == "" {
+		claimAcceptance = selected.Acceptance
+	}
+	claimValidation := strings.TrimSpace(*validation)
+	if claimValidation == "" {
+		claimValidation = selected.Validation
+	}
+	claimNextAction := strings.TrimSpace(*nextAction)
+	if claimNextAction == "" {
+		claimNextAction = "Read scoped continuity context and begin " + selected.ID + "."
+	}
+	claimSelectionReason := strings.TrimSpace(*selectionReason)
+	if plan != nil {
+		if _, err := validateTaskPlanContract(plan, selected, true); err != nil {
+			return fmt.Errorf("task contract: %w", err)
+		}
+		if strings.TrimSpace(*goal) != "" && claimGoal != selected.Title {
+			return fmt.Errorf("task %s goal is fixed by its approved contract; omit --goal or use %q", selected.ID, selected.Title)
+		}
+		if strings.TrimSpace(*acceptance) != "" && claimAcceptance != selected.Acceptance {
+			return fmt.Errorf("task %s acceptance is fixed by its approved contract; omit --acceptance or use %q", selected.ID, selected.Acceptance)
+		}
+		if len(claimScope) == 0 {
+			claimScope = append([]string(nil), selected.Scope...)
+		} else {
+			claimScope, err = planPaths(*scope)
+			if err != nil {
+				return err
+			}
+		}
+		if !pathsContainedBy(claimScope, selected.Scope) {
+			return fmt.Errorf("claim scope %s exceeds task %s scope %s", strings.Join(claimScope, ", "), selected.ID, strings.Join(selected.Scope, ", "))
+		}
+		if claimValidation != selected.Validation {
+			return fmt.Errorf("task %s validation is fixed by its approved contract; omit --validation or use %q", selected.ID, selected.Validation)
+		}
+		if claimSelectionReason == "" {
+			return errors.New("--selection-reason is required for planned work; use continuity ready evidence to explain the choice")
+		}
+	} else if len(claimScope) == 0 && len(selected.Scope) > 0 {
+		claimScope = append([]string(nil), selected.Scope...)
+	}
+	if err := requireSingleLine(map[string]string{
+		"--goal":        claimGoal,
+		"--acceptance":  claimAcceptance,
+		"--next-action": claimNextAction,
+	}); err != nil {
+		return err
+	}
 	claimOwner := strings.TrimSpace(*owner)
 	if claimOwner == "" {
 		claimOwner = ownerForSession(*session)
@@ -562,16 +876,17 @@ func startCommand(args []string) error {
 		return errors.New("writer claims require a named Git branch; create or switch to a branch before starting work")
 	}
 	claim, err := continuity.ClaimTask(root, continuity.ClaimRequest{
-		TaskID:     *id,
-		Owner:      claimOwner,
-		Worktree:   root,
-		Branch:     snapshot.Branch,
-		Scope:      parseScope(*scope),
-		Goal:       *goal,
-		Acceptance: *acceptance,
-		Mode:       *mode,
-		NextAction: *nextAction,
-		Validation: *validation,
+		TaskID:          *id,
+		Owner:           claimOwner,
+		Worktree:        root,
+		Branch:          snapshot.Branch,
+		Scope:           claimScope,
+		Goal:            claimGoal,
+		Acceptance:      claimAcceptance,
+		Mode:            *mode,
+		NextAction:      claimNextAction,
+		Validation:      claimValidation,
+		SelectionReason: claimSelectionReason,
 	})
 	if err != nil {
 		return err

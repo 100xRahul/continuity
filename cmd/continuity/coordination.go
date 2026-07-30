@@ -48,6 +48,9 @@ func statusCommand(args []string) error {
 			if claim.NextAction != "" {
 				fmt.Println("  next:", claim.NextAction)
 			}
+			if claim.SelectionReason != "" {
+				fmt.Println("  selection:", claim.SelectionReason)
+			}
 		}
 	}
 	if len(completions) == 0 {
@@ -234,6 +237,9 @@ func compactContext(root, owner string, limit int, requestedScopes []string) (st
 		if current.NextAction != "" {
 			fmt.Fprintf(&builder, "Next action: %s\n", current.NextAction)
 		}
+		if current.SelectionReason != "" {
+			fmt.Fprintf(&builder, "Selection reason: %s\n", current.SelectionReason)
+		}
 		if current.Risk != "" && current.Risk != "none" {
 			fmt.Fprintf(&builder, "Risk: %s\n", current.Risk)
 		}
@@ -260,17 +266,11 @@ func compactContext(root, owner string, limit int, requestedScopes []string) (st
 			fmt.Fprintf(&builder, "- %s at %s\n", completion.TaskID, completion.Commit)
 		}
 	}
-	if ready, err := continuity.ReadyTasks(state.Section("Ready Queue")); err == nil {
-		claimed := map[string]bool{}
-		for _, claim := range claims {
-			claimed[claim.TaskID] = true
-		}
-		for _, task := range ready {
-			if !claimed[task.ID] {
-				fmt.Fprintf(&builder, "Ready approved task: %s — %s\n", task.ID, task.Title)
-				break
-			}
-		}
+	if candidates, err := readyCandidates(state, plan, claims); err != nil {
+		return "", fmt.Errorf("ready task contract: %w", err)
+	} else if len(candidates) > 0 {
+		candidate := candidates[0]
+		fmt.Fprintf(&builder, "Ready approved task: %s — %s | unblocks: %d\n", candidate.Task.ID, candidate.Task.Title, candidate.Unblocks)
 	}
 	builder.WriteString("Project intent: ")
 	builder.WriteString(singleLineSnippet(state.Section("Product Intent"), 420))
@@ -433,7 +433,7 @@ func integrateCommand(args []string) error {
 				return err
 			}
 			handoff := "Last completed: " + *id + " — " + integrated.Summary + "\n" +
-				"Immediate restart action: Run continuity status. If an approved task is ready, claim it with continuity start; otherwise wait for user direction or use continuity task add --approved only for explicitly approved work."
+				"Immediate restart action: Run continuity status and continuity ready. Claim a ready task with its durable contract; if an approved plan has no ready task, derive only a focused technical step inside its active outcome from an unclaimed integration checkout. In a legacy project, use continuity task add --approved only for explicitly approved work."
 			if err := state.ReplaceSection("Handoff", handoff); err != nil {
 				return err
 			}

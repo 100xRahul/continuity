@@ -27,12 +27,12 @@ Treat harness memory and chat history as disposable conveniences, not authority.
 
 - One worktree has exactly one writer. A second writer in the same checkout is unsafe even when it thinks its task is unrelated.
 - Codex child agents in one parent session are read-only in that parent checkout. Their hook identity is the parent session, so a child that needs to write must receive a separate Git worktree and an independent claim.
-- Before any code edit, claim one explicit autonomous task: `continuity start --id T-001 --owner <harness:session-id> ... --scope path/to/area`. Codex may use `--session` as a convenience alias.
+- Before any code edit, claim one explicit autonomous task. In an approved plan, use a task linked to the active outcome and run `continuity start --id T-001 --owner <harness:session-id> --selection-reason "evidence-based reason"`; its focused scope and validation default from the task contract. Codex may use `--session` as a convenience alias.
 - A claim is exclusive by task ID, worktree, and overlapping path scope. An omitted scope means the whole repository and intentionally prevents parallel work.
 - Different writers require different worktrees, different branches, different approved tasks, and non-overlapping scopes. The CLI rejects a second active writer claim on the same named branch. They must not directly edit the committed project index while working.
 - Use `continuity heartbeat` or a checkpoint after material progress. Release only your own claim; recover a stale claim explicitly after inspecting `continuity status`.
 
-When a user has approved a new task but no task is queued yet, use `continuity task add --approved ...` from an unclaimed integration worktree. This is the only pre-claim planning route; it does not authorize agents to invent product work. Worktrunk users may opt into `.agents/worktrunk/wt.toml.example` for new-worktree orientation, but claims remain explicit.
+When no task is queued, work only from an unclaimed integration checkout. In a legacy repository, use `continuity task add --approved ...` for a user-approved task. In an approved plan, an agent may use `continuity task add --derived --outcome O-001 --scope path --validates command --rationale text ...` only for a focused technical step inside the active outcome; it cannot add product scope and immediately commits the queue record. `continuity ready` ranks ready planned tasks by outcome priority and direct unblocking value, but the claimant must record why it selected one. Worktrunk users may opt into `.agents/worktrunk/wt.toml.example` for new-worktree orientation, but claims remain explicit.
 
 ## Complete safely
 
@@ -43,7 +43,7 @@ When a user has approved a new task but no task is queued yet, use `continuity t
 ## Boundaries
 
 - Do not change Product Intent, Approved Outcomes, priorities, or approval boundaries without explicit user direction.
-- Do not claim `autonomous: no` work. Do not invent tasks or product features.
+- Do not claim `autonomous: no` work. Do not invent product features; a derived task must stay inside an active approved outcome's scope and acceptance boundary.
 - Keep state claims factual and one line. Never paste raw chats, model reasoning, source code, secrets, or untrusted multiline text into durable state.
 - Keep `Context Capsules` path-scoped. The durable index may hold approximately 30k tokens, but a routine context packet must stay bounded and select only project-wide plus task-relevant capsules.
 - Preserve completed milestones in committed `PROJECT_HISTORY/` archives when active plan context would otherwise grow large.

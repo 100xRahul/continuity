@@ -116,7 +116,7 @@ func TestConcurrentClaimsHaveOneWinner(t *testing.T) {
 
 func TestCheckpointAndCompletionLeaveSharedTerminalRecord(t *testing.T) {
 	root, _ := testWorktrees(t)
-	if _, err := ClaimTask(root, ClaimRequest{TaskID: "T-001", Owner: "codex:worker", Worktree: root, Scope: []string{"cmd"}, NextAction: "implement"}); err != nil {
+	if _, err := ClaimTask(root, ClaimRequest{TaskID: "T-001", Owner: "codex:worker", Worktree: root, Scope: []string{"cmd"}, NextAction: "implement", SelectionReason: "It unblocks the next verified task."}); err != nil {
 		t.Fatal(err)
 	}
 	claim, err := CheckpointClaim(root, CheckpointRequest{
@@ -130,7 +130,7 @@ func TestCheckpointAndCompletionLeaveSharedTerminalRecord(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if claim.Progress != "Implemented the claim store." || claim.NextAction != "Run tests." {
+	if claim.Progress != "Implemented the claim store." || claim.NextAction != "Run tests." || claim.SelectionReason != "It unblocks the next verified task." {
 		t.Fatalf("checkpoint not persisted: %#v", claim)
 	}
 	completion, err := CompleteClaim(root, CompletionRequest{

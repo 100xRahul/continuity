@@ -893,14 +893,89 @@ func planScopeMatches(paths, scopes []string) bool {
 	}
 	for _, path := range paths {
 		for _, scope := range scopes {
-			path = filepath.ToSlash(filepath.Clean(path))
-			scope = filepath.ToSlash(filepath.Clean(scope))
-			if path == "." || scope == "." || path == scope || strings.HasPrefix(path, scope+"/") || strings.HasPrefix(scope, path+"/") {
+			if pathsOverlap(path, scope) {
 				return true
 			}
 		}
 	}
 	return false
+}
+
+// validateTaskPlanContract verifies that an implementation task is bounded by
+// a declared plan outcome. Completed historic tasks may point at an outcome in
+// an earlier milestone; selectable work must point at the current one.
+func validateTaskPlanContract(plan *continuity.Plan, task continuity.Task, selectable bool) (continuity.Outcome, error) {
+	if plan == nil {
+		return continuity.Outcome{}, nil
+	}
+	if plan.Meta["status"] != "approved" {
+		return continuity.Outcome{}, errors.New("delivery plan is still a draft; explicit plan approval is required before implementation work")
+	}
+	if task.Outcome == "" {
+		return continuity.Outcome{}, fmt.Errorf("task %s does not link to an approved outcome", task.ID)
+	}
+	if len(task.Scope) == 0 {
+		return continuity.Outcome{}, fmt.Errorf("task %s has no focused scope", task.ID)
+	}
+	if strings.TrimSpace(task.Validation) == "" {
+		return continuity.Outcome{}, fmt.Errorf("task %s has no validation command", task.ID)
+	}
+	outcomes, err := plan.Outcomes()
+	if err != nil {
+		return continuity.Outcome{}, err
+	}
+	for _, outcome := range outcomes {
+		if outcome.ID != task.Outcome {
+			continue
+		}
+		if !pathsContainedBy(task.Scope, outcome.Scope) {
+			return continuity.Outcome{}, fmt.Errorf("task %s scope %s exceeds outcome %s scope %s", task.ID, strings.Join(task.Scope, ", "), outcome.ID, strings.Join(outcome.Scope, ", "))
+		}
+		if selectable {
+			if outcome.Milestone != plan.Meta["active_milestone"] {
+				return continuity.Outcome{}, fmt.Errorf("task %s links to %s, which is outside active milestone %s", task.ID, outcome.ID, plan.Meta["active_milestone"])
+			}
+			if outcome.Status == "x" {
+				return continuity.Outcome{}, fmt.Errorf("task %s links to completed outcome %s", task.ID, outcome.ID)
+			}
+		}
+		return outcome, nil
+	}
+	return continuity.Outcome{}, fmt.Errorf("task %s links to unknown outcome %s", task.ID, task.Outcome)
+}
+
+// pathsContainedBy differs deliberately from overlap: a task that names
+// "internal" must not be allowed under an outcome limited to
+// "internal/auth", even though those paths overlap.
+func pathsContainedBy(paths, allowed []string) bool {
+	if len(paths) == 0 || len(allowed) == 0 {
+		return false
+	}
+	for _, path := range paths {
+		contained := false
+		for _, scope := range allowed {
+			if pathWithin(path, scope) {
+				contained = true
+				break
+			}
+		}
+		if !contained {
+			return false
+		}
+	}
+	return true
+}
+
+func pathsOverlap(left, right string) bool {
+	left = filepath.ToSlash(filepath.Clean(left))
+	right = filepath.ToSlash(filepath.Clean(right))
+	return left == "." || right == "." || pathWithin(left, right) || pathWithin(right, left)
+}
+
+func pathWithin(path, parent string) bool {
+	path = filepath.ToSlash(filepath.Clean(path))
+	parent = filepath.ToSlash(filepath.Clean(parent))
+	return parent == "." || path == parent || strings.HasPrefix(path, parent+"/")
 }
 
 func planPaths(value string) ([]string, error) {

@@ -33,7 +33,7 @@ Paths must be repository-relative. `Paths: .` is project-wide orientation. `cont
 
 ## Task queue syntax
 
-Use exactly one line per task:
+Legacy repositories use one compact line per task:
 
 ```md
 - [ ] T-002 | Issue previous reset tokens on password change | depends: T-001 | autonomous: yes | accepts: Focused reset-token tests pass and old tokens are rejected.
@@ -41,11 +41,19 @@ Use exactly one line per task:
 
 Status markers are `[ ]` queued and `[x]` integrated. `[>]` is a legacy single-worker marker and must match `active_task`; new concurrent work uses local claims instead.
 
+After a delivery plan is approved, executable tasks use an outcome-bound contract:
+
+```md
+- [ ] T-002 | Issue previous reset tokens on password change | outcome: O-001 | scope: api/auth, internal/auth | depends: T-001 | autonomous: yes | validates: go test ./api/auth ./internal/auth | accepts: Focused reset-token tests pass and old tokens are rejected. | derived: It unblocks the highest-priority security outcome.
+```
+
+The outcome must be active, each task path must be contained by the outcome's declared scope, and `validates` must name focused verification. `continuity ready` ranks candidates by outcome priority and direct unblocking value. A planned `continuity start` defaults its goal, acceptance, scope, and validation from this record and requires a compact `--selection-reason`.
+
 ## Live coordination
 
 For sessions on one machine, the CLI stores claims, heartbeats, and pending completions in Git's common directory. Linked worktrees therefore see the same live board without committing it or creating merge conflicts.
 
-A claim contains task ID, owner/session identity, worktree, branch, scope, goal, next action, and lease. A claim is exclusive by task, worktree, and overlapping scope. A completion records a verified commit until `continuity integrate` confirms that commit is in the integration checkout.
+A claim contains task ID, owner/session identity, worktree, branch, scope, goal, next action, selection reason, and lease. A claim is exclusive by task, worktree, and overlapping scope. A completion records a verified commit until `continuity integrate` confirms that commit is in the integration checkout.
 
 ## Ownership
 

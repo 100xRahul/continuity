@@ -48,3 +48,40 @@ func TestAddTaskRequiresValidUniqueDependencies(t *testing.T) {
 		t.Fatalf("unknown dependency was accepted: %v", err)
 	}
 }
+
+func TestOutcomeTaskContractRoundTripsWithDerivedRationale(t *testing.T) {
+	queue := "- [ ] T-011 | Add task contracts | outcome: O-001 | scope: cmd/continuity, internal/continuity | depends: none | autonomous: yes | validates: go test ./... | accepts: Planned tasks are bounded. | derived: It unblocks safe autonomous continuation."
+	tasks, err := ParseTasks(queue)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tasks) != 1 {
+		t.Fatalf("task count = %d, want 1", len(tasks))
+	}
+	task := tasks[0]
+	if task.Outcome != "O-001" || strings.Join(task.Scope, ",") != "cmd/continuity,internal/continuity" || task.Validation != "go test ./..." || task.Rationale != "It unblocks safe autonomous continuation." {
+		t.Fatalf("contract did not parse: %#v", task)
+	}
+	updated, err := AddTask("", task)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated != queue {
+		t.Fatalf("task did not render stably:\nwant %q\n got %q", queue, updated)
+	}
+}
+
+func TestOutcomeTaskContractRequiresFocusedScopeAndValidation(t *testing.T) {
+	if _, err := AddTask("", Task{ID: "T-010", Title: "Stray contract", Scope: []string{"internal/continuity"}, Autonomous: true, Acceptance: "Must fail."}); err == nil || !strings.Contains(err.Error(), "require an outcome") {
+		t.Fatalf("contract fields without an outcome were accepted: %v", err)
+	}
+	if _, err := AddTask("", Task{ID: "T-011", Title: "Missing scope", Outcome: "O-001", Autonomous: true, Validation: "go test ./...", Acceptance: "Must fail."}); err == nil || !strings.Contains(err.Error(), "focused scope") {
+		t.Fatalf("missing scope accepted: %v", err)
+	}
+	if _, err := AddTask("", Task{ID: "T-011", Title: "Missing validation", Outcome: "O-001", Scope: []string{"internal/continuity"}, Autonomous: true, Acceptance: "Must fail."}); err == nil || !strings.Contains(err.Error(), "validation") {
+		t.Fatalf("missing validation accepted: %v", err)
+	}
+	if _, err := ParseTasks("- [ ] T-011 | Unsafe scope | outcome: O-001 | scope: ../outside | depends: none | autonomous: yes | validates: go test ./... | accepts: Must fail."); err == nil || !strings.Contains(err.Error(), "escapes") {
+		t.Fatalf("escaping task scope accepted: %v", err)
+	}
+}

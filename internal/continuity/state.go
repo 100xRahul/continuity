@@ -573,13 +573,11 @@ Status: ready
 Mode: strict
 Goal: none
 Acceptance criteria: none
-Immediate next action: Select an approved ready task or request product direction.
+Immediate next action: Inspect repository facts, complete the delivery-plan intake, and wait for explicit milestone approval.
 Edit scope: none
 Validation: none
 
 ## Ready Queue
-
-- [ ] T-001 | Define the first approved engineering task | depends: none | autonomous: no | accepts: User-approved goal and observable completion criteria recorded.
 
 ## Active Decisions
 

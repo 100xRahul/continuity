@@ -23,6 +23,9 @@ func TestInitCreatesFreshScaffoldedRepository(t *testing.T) {
 	if state.Meta["plan_status"] != "draft" || state.Meta["plan_active_milestone"] != "none" {
 		t.Fatalf("new project did not project draft plan state: %#v", state.Meta)
 	}
+	if tasks, err := continuity.ParseTasks(state.Section("Ready Queue")); err != nil || len(tasks) != 0 {
+		t.Fatalf("new draft should not reserve a task ID: %#v, %v", tasks, err)
+	}
 	for _, path := range []string{
 		"PROJECT_STATE.md",
 		"PROJECT_PLAN.md",

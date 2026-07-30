@@ -8,39 +8,79 @@ import (
 	"strings"
 )
 
-var taskPattern = regexp.MustCompile(`(?m)^- \[([ x>])\] ([A-Za-z][A-Za-z0-9_-]*) \| ([^|]+) \| depends: ([^|]+) \| autonomous: (yes|no) \| accepts: (.+)\s*$`)
+var (
+	legacyTaskPattern   = regexp.MustCompile(`^- \[([ x>])\] ([A-Za-z][A-Za-z0-9_-]*) \| ([^|]+) \| depends: ([^|]+) \| autonomous: (yes|no) \| accepts: (.+)$`)
+	contractTaskPattern = regexp.MustCompile(`^- \[([ x>])\] ([A-Za-z][A-Za-z0-9_-]*) \| ([^|]+) \| outcome: (O-[A-Za-z0-9_-]+) \| scope: ([^|]+) \| depends: ([^|]+) \| autonomous: (yes|no) \| validates: ([^|]+) \| accepts: (.+?)(?: \| derived: (.+))?$`)
+)
 
 type Task struct {
 	Status     string
 	ID         string
 	Title      string
+	Outcome    string
+	Scope      []string
 	DependsOn  []string
 	Autonomous bool
+	Validation string
 	Acceptance string
+	// Rationale is present only for an agent-derived technical task. It is
+	// intentionally compact: the approved Outcome remains the authority for
+	// product scope, while this field records why the focused task exists.
+	Rationale string
 }
 
 func ParseTasks(content string) ([]Task, error) {
-	matches := taskPattern.FindAllStringSubmatch(content, -1)
-	if len(matches) == 0 && strings.TrimSpace(content) != "" {
-		return nil, fmt.Errorf("Ready Queue must use '- [ ] T-001 | title | depends: none | autonomous: yes | accepts: observable result' lines")
+	content = strings.TrimSpace(content)
+	if content == "" {
+		return nil, nil
 	}
-	tasks := make([]Task, 0, len(matches))
+	lines := strings.Split(content, "\n")
+	tasks := make([]Task, 0, len(lines))
 	seen := map[string]bool{}
-	for _, match := range matches {
-		id := match[2]
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			return nil, errors.New("Ready Queue cannot contain blank lines")
+		}
+		var task Task
+		if match := contractTaskPattern.FindStringSubmatch(line); len(match) > 0 {
+			scope, err := parsePlanPaths(match[5])
+			if err != nil {
+				return nil, fmt.Errorf("task %s scope: %w", match[2], err)
+			}
+			task = Task{
+				Status:     match[1],
+				ID:         match[2],
+				Title:      strings.TrimSpace(match[3]),
+				Outcome:    match[4],
+				Scope:      scope,
+				DependsOn:  parseDependencies(match[6]),
+				Autonomous: match[7] == "yes",
+				Validation: strings.TrimSpace(match[8]),
+				Acceptance: strings.TrimSpace(match[9]),
+				Rationale:  strings.TrimSpace(match[10]),
+			}
+		} else if match := legacyTaskPattern.FindStringSubmatch(line); len(match) > 0 {
+			task = Task{
+				Status:     match[1],
+				ID:         match[2],
+				Title:      strings.TrimSpace(match[3]),
+				DependsOn:  parseDependencies(match[4]),
+				Autonomous: match[5] == "yes",
+				Acceptance: strings.TrimSpace(match[6]),
+			}
+		} else {
+			return nil, fmt.Errorf("Ready Queue must use a legacy task line or '- [ ] T-001 | title | outcome: O-001 | scope: path | depends: none | autonomous: yes | validates: command | accepts: observable result'")
+		}
+		if err := validateTaskFields(task); err != nil {
+			return nil, fmt.Errorf("task %s: %w", task.ID, err)
+		}
+		id := task.ID
 		if seen[id] {
 			return nil, fmt.Errorf("duplicate task ID %s", id)
 		}
 		seen[id] = true
-		dependencies := parseDependencies(match[4])
-		tasks = append(tasks, Task{
-			Status:     match[1],
-			ID:         id,
-			Title:      strings.TrimSpace(match[3]),
-			DependsOn:  dependencies,
-			Autonomous: match[5] == "yes",
-			Acceptance: strings.TrimSpace(match[6]),
-		})
+		tasks = append(tasks, task)
 	}
 	return tasks, nil
 }
@@ -171,15 +211,11 @@ func AddTask(content string, task Task) (string, error) {
 	if task.Status != "" && task.Status != " " {
 		return "", errors.New("new tasks must begin queued")
 	}
-	depends := "none"
-	if len(task.DependsOn) > 0 {
-		depends = strings.Join(task.DependsOn, ", ")
+	task.Status = " "
+	if err := validateTaskFields(task); err != nil {
+		return "", err
 	}
-	autonomous := "no"
-	if task.Autonomous {
-		autonomous = "yes"
-	}
-	line := fmt.Sprintf("- [ ] %s | %s | depends: %s | autonomous: %s | accepts: %s", task.ID, task.Title, depends, autonomous, task.Acceptance)
+	line := RenderTask(task)
 	candidate := strings.TrimSpace(content)
 	if candidate != "" {
 		candidate += "\n" + line
@@ -195,6 +231,59 @@ func AddTask(content string, task Task) (string, error) {
 	return candidate, nil
 }
 
+// RenderTask uses the richer outcome contract whenever an outcome is present;
+// old task records remain parseable so a repository can adopt the plan layer
+// without rewriting historic task history.
+func RenderTask(task Task) string {
+	depends := "none"
+	if len(task.DependsOn) > 0 {
+		depends = strings.Join(task.DependsOn, ", ")
+	}
+	autonomous := "no"
+	if task.Autonomous {
+		autonomous = "yes"
+	}
+	if task.Outcome != "" {
+		line := fmt.Sprintf("- [%s] %s | %s | outcome: %s | scope: %s | depends: %s | autonomous: %s | validates: %s | accepts: %s", task.Status, task.ID, task.Title, task.Outcome, strings.Join(task.Scope, ", "), depends, autonomous, task.Validation, task.Acceptance)
+		if task.Rationale != "" {
+			line += " | derived: " + task.Rationale
+		}
+		return line
+	}
+	return fmt.Sprintf("- [%s] %s | %s | depends: %s | autonomous: %s | accepts: %s", task.Status, task.ID, task.Title, depends, autonomous, task.Acceptance)
+}
+
+func validateTaskFields(task Task) error {
+	for name, value := range map[string]string{
+		"task ID":    task.ID,
+		"task title": task.Title,
+		"acceptance": task.Acceptance,
+	} {
+		if strings.TrimSpace(value) == "" || strings.ContainsAny(value, "\r\n|") {
+			return fmt.Errorf("%s must be non-empty single-line text without |", name)
+		}
+	}
+	if task.Outcome == "" {
+		if len(task.Scope) > 0 || strings.TrimSpace(task.Validation) != "" || strings.TrimSpace(task.Rationale) != "" {
+			return fmt.Errorf("task %s contract fields require an outcome", task.ID)
+		}
+		return nil
+	}
+	if !strings.HasPrefix(task.Outcome, "O-") {
+		return fmt.Errorf("task %s outcome must begin with O-", task.ID)
+	}
+	if len(task.Scope) == 0 {
+		return fmt.Errorf("task %s requires a focused scope", task.ID)
+	}
+	if strings.TrimSpace(task.Validation) == "" || strings.ContainsAny(task.Validation, "\r\n|") {
+		return fmt.Errorf("task %s requires a single-line validation command", task.ID)
+	}
+	if strings.TrimSpace(task.Rationale) != "" && strings.ContainsAny(task.Rationale, "\r\n|") {
+		return fmt.Errorf("task %s rationale must be single-line text without |", task.ID)
+	}
+	return nil
+}
+
 func UpdateTaskStatus(content, id, status string) (string, error) {
 	if status != " " && status != "x" && status != ">" {
 		return "", fmt.Errorf("invalid task status %q", status)
@@ -202,9 +291,9 @@ func UpdateTaskStatus(content, id, status string) (string, error) {
 	updated := false
 	lines := strings.Split(content, "\n")
 	for index, line := range lines {
-		match := taskPattern.FindStringSubmatch(line)
-		if len(match) > 0 && match[2] == id {
-			lines[index] = strings.Replace(line, "["+match[1]+"]", "["+status+"]", 1)
+		task, ok := parseTaskLine(strings.TrimSpace(line))
+		if ok && task.ID == id {
+			lines[index] = strings.Replace(line, "["+task.Status+"]", "["+status+"]", 1)
 			updated = true
 		}
 	}
@@ -212,4 +301,20 @@ func UpdateTaskStatus(content, id, status string) (string, error) {
 		return "", fmt.Errorf("task %s is not in Ready Queue", id)
 	}
 	return strings.Join(lines, "\n"), nil
+}
+
+func parseTaskLine(line string) (Task, bool) {
+	if match := contractTaskPattern.FindStringSubmatch(line); len(match) > 0 {
+		scope, err := parsePlanPaths(match[5])
+		if err != nil {
+			return Task{}, false
+		}
+		task := Task{Status: match[1], ID: match[2], Title: strings.TrimSpace(match[3]), Outcome: match[4], Scope: scope, DependsOn: parseDependencies(match[6]), Autonomous: match[7] == "yes", Validation: strings.TrimSpace(match[8]), Acceptance: strings.TrimSpace(match[9]), Rationale: strings.TrimSpace(match[10])}
+		return task, validateTaskFields(task) == nil
+	}
+	if match := legacyTaskPattern.FindStringSubmatch(line); len(match) > 0 {
+		task := Task{Status: match[1], ID: match[2], Title: strings.TrimSpace(match[3]), DependsOn: parseDependencies(match[4]), Autonomous: match[5] == "yes", Acceptance: strings.TrimSpace(match[6])}
+		return task, validateTaskFields(task) == nil
+	}
+	return Task{}, false
 }

@@ -1,11 +1,11 @@
 ---
 schema: 2
-fingerprint: sha256:a44745020e4d6abdcf01a9e82a63f864928ee19c9d372a95625f4a0060ab45aa
+fingerprint: sha256:a515822ff74bc02ba06e4d4fa7c2510f6e84c0844e322fed319b8deb3cc51498
 branch: main
-head: 9e45630ac944af7223a07ba192a04f0532e47594
+head: 3df93c2da7cbc3d6c6468b9250eb0ec32e5c4c2b
 status: ready
 active_task: none
-updated_at: 2026-07-30T17:03:33Z
+updated_at: 2026-07-30T17:29:53Z
 ---
 
 # Continuity
@@ -60,6 +60,7 @@ Validation: none
 - D-009 — Keep Worktrunk as an optional orientation bridge and require one named branch per live writer. Why: Worktrunk improves Git-worktree ergonomics, but shared context, task ownership, and safety must still work with plain Git and every harness. Evidence: `.agents/worktrunk/`, `cmd/continuity/main.go`, `internal/continuity/coordination.go`.
 - D-010 — Refresh the durable handoff during integration. Why: a completed task is not useful to a fresh session if its restart instruction still names older work. Evidence: `cmd/continuity/coordination.go`.
 - D-011 — Keep detailed roadmap authority in `PROJECT_PLAN.md` and a compact active projection in `PROJECT_STATE.md`. Why: plan-level approval and richer delivery context must survive harness changes without bloating ordinary task startup. Evidence: `internal/continuity/plan.go`, `cmd/continuity/plan.go`.
+- D-012 — Bind each executable planned task to an active approved outcome, a contained edit scope, a validation command, and a compact derivation or selection reason. Why: agents can decompose approved technical work without inventing product scope, while a fresh harness can choose the next task from durable evidence instead of rereading code or chat. Evidence: `internal/continuity/tasks.go`, `cmd/continuity/main.go`, `cmd/continuity/plan.go`.
 
 ## Constraints and Approval Boundaries
 
@@ -75,7 +76,7 @@ Validation: none
 - State engine — `internal/continuity/state.go` — Markdown front matter, sections, approximately 30k-token validation, path-indexed Context Capsules, templates, and atomic writes.
 - Git facts — `internal/continuity/git.go` — repository snapshots, source fingerprints, and incremental reconciliation.
 - Coordination store — `internal/continuity/coordination.go` — common-Git-directory claims, heartbeats, branch and scope exclusion, pending completions, and explicit stale recovery.
-- Task graph — `internal/continuity/tasks.go` — task syntax, safe task addition, dependencies, readiness, and cycle detection.
+- Task graph — `internal/continuity/tasks.go`, `cmd/continuity/main.go` — legacy and outcome-bound task contracts, scope/validation enforcement, derived technical task records, dependency readiness, and evidence-ranked next-task selection.
 - Delivery plan — `internal/continuity/plan.go`, `cmd/continuity/plan.go` — structured Markdown roadmap, sources, outcomes, decisions, explicit approval, milestone activation, and plan deltas.
 - Adapter installer — `internal/continuity/adapters.go` — non-overwriting protocol, skill, harness adapters, and optional Worktrunk bridge scaffolding for new repositories.
 - Codex adapter — `.codex/hooks.json`, `.codex/hooks/continuity.sh` — optional session context and pre-write guardrails after project trust.
@@ -107,6 +108,7 @@ Details: This prevents a fresh session from attempting finished work. Integratio
 Paths: PROJECT_PLAN.md, PROJECT_HISTORY, cmd/continuity/plan.go, internal/continuity/plan.go, AGENTS.md
 Summary: A draft plan captures distilled project facts; explicit user approval activates only the nearest executable milestone.
 Details: Interview the user one decision at a time only where repository inspection cannot answer. Record compact sources, assumptions, and decision cards instead of raw chat. High-impact unresolved decisions affecting the milestone block approval. Keep later roadmap work visible but non-executable until activation.
+After approval, an implementation task must name an active outcome, remain within its scope, and carry focused validation. `continuity ready` presents priority and direct-unblocking evidence; the claimant records why it selected that task. A derived technical task is allowed only from an unclaimed integration checkout and is committed immediately.
 
 ## Known Pitfalls and Failed Approaches
 
@@ -121,6 +123,7 @@ Details: Interview the user one decision at a time only where repository inspect
 - Do not leave a completed task's handoff pointing at older work. The integration command updates the task status, evidence, recent changes, and restart instruction together. Evidence: `cmd/continuity/coordination.go`, `cmd/continuity/main_test.go`.
 - Do not treat a plausible draft as product approval. Only `continuity plan approve --approved --milestone ...` records an immediate Git-backed executable boundary; unapproved plan content cannot authorize implementation. Evidence: `cmd/continuity/plan.go`, `cmd/continuity/plan_test.go`.
 - Do not equate the approximately 30k-token durable budget with routine context size. The full index is deliberate-review material; startup and task context must select only project-wide and scope-relevant capsules. Evidence: `cmd/continuity/coordination.go`, `AGENTS.md`.
+- Do not seed a reusable task ID into a fresh draft queue. The placeholder `T-001` collided with the first natural real task; keep the queue empty until the approved plan supplies a real contract. Evidence: `internal/continuity/state.go`, `cmd/continuity/taskgraph_test.go`.
 
 ## Verification
 - Fresh init-to-approval CLI smoke: pass

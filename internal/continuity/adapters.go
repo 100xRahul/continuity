@@ -110,7 +110,7 @@ If PROJECT_PLAN.md is draft, inspect repository facts and interview the user one
 
 Before non-trivial work, use the project-continuity skill when available. Run continuity context --owner <harness:session-id> and continuity status; Codex may use --session as a convenience alias. Use an active claim's scope or --scope path/to/area to load only relevant Context Capsules. If another owner holds this worktree, do not edit, revert, or reinterpret its changes; work read-only, wait, or use a separate Git worktree. Codex child agents are read-only in their parent checkout; give a child writer a separate worktree and claim.
 
-Before editing, claim one explicit autonomous task with continuity start and a narrow --scope. One worktree and one branch have one writer; claims reject duplicate tasks, shared branches, and overlapping scopes. If a user has approved a task before any claim exists, use continuity task add --approved from the unclaimed integration worktree; agents must not invent work. Checkpoint material progress or blockers. Commit and finalize with verification evidence, then merge/hand off and use continuity integrate to update PROJECT_STATE.md.
+Before editing, run continuity ready and claim one explicit autonomous task with continuity start. Planned tasks must link to the active approved outcome and carry a focused scope plus validation command; start defaults those fields and requires an evidence-based --selection-reason. One worktree and one branch have one writer; claims reject duplicate tasks, shared branches, and overlapping scopes. From an unclaimed integration worktree, use continuity task add --approved for a user-specified task or continuity task add --derived --outcome O-001 --scope path --validates command --rationale text for a needed technical step wholly inside the active outcome. The derived route immediately commits the queue record; neither route authorizes product work. Checkpoint material progress or blockers. Commit and finalize with verification evidence, then merge/hand off and use continuity integrate to update PROJECT_STATE.md.
 
 Do not change product intent, approved outcomes, or approval boundaries without user direction. Do not invent product features. Stop for destructive actions, production changes, credentials, external spending, security uncertainty, unresolved product choices, repeated blockers, or unexplained failures.
 `
@@ -240,7 +240,7 @@ Run continuity context --owner <harness:session-id> and continuity status; Codex
 
 When PROJECT_PLAN.md is draft, inspect repository facts and interview the user one decision at a time with a recommendation. Store compact facts, source references, assumptions, and decision cards rather than raw chat. Do not claim implementation work until the user explicitly approves the milestone with continuity plan approve --approved --milestone M-001. Treat later product, priority, constraint, and milestone changes as plan deltas.
 
-Before editing, claim an approved autonomous task with continuity start and a narrow --scope. One worktree and one branch have one writer; claims reject duplicate tasks, shared branches, and overlapping scopes. If a user has approved a task before any claim exists, use continuity task add --approved from the unclaimed integration worktree; agents must not invent work. Worktrunk users may opt into .agents/worktrunk/wt.toml.example for new-worktree orientation. Commit, finalize with verification evidence, then merge/hand off and use continuity integrate before declaring the task durable.
+Before editing, run continuity ready and claim an approved autonomous task with continuity start. Planned tasks must link to the active approved outcome and carry a focused scope plus validation command; start defaults those fields and requires an evidence-based --selection-reason. One worktree and one branch have one writer; claims reject duplicate tasks, shared branches, and overlapping scopes. From an unclaimed integration worktree, use continuity task add --approved for a user-specified task or continuity task add --derived --outcome O-001 --scope path --validates command --rationale text for a needed technical step wholly inside the active outcome. The derived route immediately commits the queue record; neither route authorizes product work. Worktrunk users may opt into .agents/worktrunk/wt.toml.example for new-worktree orientation. Commit, finalize with verification evidence, then merge/hand off and use continuity integrate before declaring the task durable.
 
 Do not replace code inspection with state prose, store raw chats or reasoning, change user-owned product direction, or invent features. Read references/state-schema.md when changing state structure or resolving ownership, freshness, or integration questions.
 `
@@ -257,11 +257,15 @@ Required front matter: schema, fingerprint, branch, head, status, active_task, a
 
 Required sections: Product Intent, Approved Outcomes, Active Work, Ready Queue, Active Decisions, Constraints and Approval Boundaries, Code Map, Context Capsules, Known Pitfalls and Failed Approaches, Verification, Recent Material Changes, and Handoff.
 
-Use task lines in this exact form:
+Legacy task lines use this compact form:
 
     - [ ] T-001 | Task title | depends: none | autonomous: yes | accepts: Observable completion criteria.
 
-Only autonomous tasks with explicit acceptance criteria can be claimed by a fresh agent. PROJECT_PLAN.md is the detailed delivery contract; PROJECT_STATE.md stores approximately 30k tokens of bounded active truth. Context Capsules keep that knowledge path-indexed and continuity context --scope keeps routine prompts selective. Git's local common directory stores live claims, heartbeats, and completions for same-machine worktrees. Use continuity integrate only after the verified worker commit is present in the integration checkout.
+Planned task lines additionally bind a focused technical step to an active approved outcome:
+
+    - [ ] T-001 | Task title | outcome: O-001 | scope: internal/auth | depends: none | autonomous: yes | validates: go test ./internal/auth | accepts: Observable completion criteria. | derived: Why this is the best next step.
+
+Only autonomous tasks with explicit acceptance criteria can be claimed by a fresh agent. Planned claims require a one-line selection reason and default to their task's scope and validation; task scopes may not exceed the outcome scope. PROJECT_PLAN.md is the detailed delivery contract; PROJECT_STATE.md stores approximately 30k tokens of bounded active truth. Context Capsules keep that knowledge path-indexed and continuity context --scope keeps routine prompts selective. Git's local common directory stores live claims, heartbeats, and completions for same-machine worktrees. Use continuity integrate only after the verified worker commit is present in the integration checkout.
 `
 
 const planSchemaTemplate = `# Delivery plan schema
@@ -272,7 +276,7 @@ Required sections: Intent, Sources, Milestones, Outcomes, Constraints, Assumptio
 
 The plan is draft until an explicit continuity plan approve --approved --milestone M-001 receipt. A draft is where the agent records compact repository facts and interviews the user one decision at a time; never store raw chat. Only the active milestone becomes executable. High-impact open decisions affecting it block approval.
 
-Milestones group user-visible outcomes. Tasks must later link to an approved active outcome. Product, priority, constraint, and milestone changes use explicit plan deltas. Completed milestone detail belongs in committed PROJECT_HISTORY archives, while PROJECT_STATE.md keeps only a compact active projection.
+Milestones group user-visible outcomes. Tasks must later link to an approved active outcome with a focused scope contained by the outcome and a validation command. continuity ready ranks candidates by outcome priority and direct unblocking evidence; continuity start records why the agent chose its task. From an unclaimed integration worktree, continuity task add --derived may add a focused technical subtask only inside an active outcome and immediately commits the queue record. Product, priority, constraint, and milestone changes use explicit plan deltas. Completed milestone detail belongs in committed PROJECT_HISTORY archives, while PROJECT_STATE.md keeps only a compact active projection.
 `
 
 const worktrunkReadmeTemplate = `# Optional Worktrunk bridge
@@ -281,7 +285,7 @@ Worktrunk manages branches and Git worktrees; Continuity supplies shared project
 
 Install continuity on PATH, review wt.toml.example, then copy it to .config/wt.toml if you want Worktrunk to show bounded orientation and live ownership in new worktrees. Open the harness in the new worktree before claiming work, then use its real owner ID. Claims remain explicit because they require that identity and a narrow code scope.
 
-Use one writer, worktree, and branch per task. In each new worktree: run continuity context and status, claim an approved task with continuity start, work and finalize, merge, then run continuity integrate from the integration checkout. A user-approved task can be added from an unclaimed integration worktree with continuity task add --approved; agents must not invent tasks.
+Use one writer, worktree, and branch per task. In each new worktree: run continuity context, status, and continuity ready; claim an approved task with continuity start and an evidence-based --selection-reason, work and finalize, merge, then run continuity integrate from the integration checkout. A user-specified task can be added from an unclaimed integration worktree with continuity task add --approved. In an approved plan, continuity task add --derived --outcome O-001 --scope path --validates command --rationale text may add only a focused technical step inside that active outcome and commits it immediately; agents must not invent product work.
 `
 
 const worktrunkConfigTemplate = `# Optional Continuity bridge for Worktrunk.

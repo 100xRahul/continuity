@@ -13,7 +13,7 @@ Use the committed project index for durable meaning and the live local claim boa
 2. If another owner holds this worktree, do not edit or reinterpret its changes. Work read-only, wait, or use a separate worktree.
 3. A Codex child agent is read-only in its parent worktree; use a separate worktree and claim for a child writer.
 4. If state is stale, run `continuity reconcile`; inspect only listed changes and mapped code. Update durable facts and run `continuity sync` before claiming a task.
-5. Select only an approved, unblocked `autonomous: yes` task with observable acceptance criteria.
+5. Run `continuity ready` and select only an approved, unblocked `autonomous: yes` task with observable acceptance criteria. For planned work, use its outcome priority and direct unblocking evidence, then record the reason at claim time.
 
 ## Intake and plan approval
 
@@ -23,7 +23,7 @@ If the plan is approved, treat its active milestone and outcomes as the product 
 
 ## Execute
 
-Before editing, run `continuity start` with a stable harness owner ID and a narrow repository-relative `--scope`. One worktree and one named branch have one writer; claims reject duplicate tasks, shared branches, and overlapping scopes in separate worktrees. If a user has approved a new task before any claim exists, use `continuity task add --approved ...` from the unclaimed integration worktree; never invent product work.
+Before editing, run `continuity start` with a stable harness owner ID. Planned tasks must link to an active approved outcome and carry a focused scope plus validation command; `start` defaults those fields from the task and requires `--selection-reason`. One worktree and one named branch have one writer; claims reject duplicate tasks, shared branches, and overlapping scopes in separate worktrees. From an unclaimed integration worktree, use `continuity task add --approved ...` for a user-specified task, or `continuity task add --derived --outcome O-001 --scope path --validates command --rationale text ...` for a needed technical subtask wholly inside an active approved outcome. The latter immediately commits the queue record; neither route authorizes new product work.
 
 Honor the task contract. Checkpoint material progress, validation, or blockers with `continuity checkpoint`. Do not edit `PROJECT_STATE.md` as a live scratchpad; active progress belongs to the claim record.
 
