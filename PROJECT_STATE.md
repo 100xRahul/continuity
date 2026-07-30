@@ -2,10 +2,10 @@
 schema: 2
 fingerprint: sha256:a515822ff74bc02ba06e4d4fa7c2510f6e84c0844e322fed319b8deb3cc51498
 branch: main
-head: 3df93c2da7cbc3d6c6468b9250eb0ec32e5c4c2b
+head: b5aa35e6fade25fda72db7dead201dcc859843c6
 status: ready
 active_task: none
-updated_at: 2026-07-30T17:29:53Z
+updated_at: 2026-07-30T17:30:27Z
 ---
 
 # Continuity
@@ -44,7 +44,7 @@ Validation: none
 - [x] T-008 | Add optional Worktrunk bridge and branch safety | depends: T-007 | autonomous: yes | accepts: Active writer claims reject a shared branch, and the project provides tested optional Worktrunk hooks or guidance that bootstrap bounded context and claims without requiring Worktrunk.
 - [x] T-009 | Refresh handoff during integration | depends: T-008 | autonomous: yes | accepts: Integration updates the durable handoff with the completed task and a safe next-session action, with focused tests.
 - [x] T-010 | Add structured project intake and approved-plan lifecycle | depends: T-009 | autonomous: yes | accepts: PROJECT_PLAN.md drafts, validation, explicit approval, milestone activation, and plan deltas work through the portable CLI with focused tests.
-- [ ] T-011 | Add outcome-linked autonomous task graph | depends: T-010 | autonomous: yes | accepts: Tasks require active approved outcomes and focused contracts, and agents can choose and claim valid ready work with recorded rationale.
+- [x] T-011 | Add outcome-linked autonomous task graph | depends: T-010 | autonomous: yes | accepts: Tasks require active approved outcomes and focused contracts, and agents can choose and claim valid ready work with recorded rationale.
 - [ ] T-012 | Add automatic change capsules and context archives | depends: T-011 | autonomous: yes | accepts: Integration derives evidence-backed task capsules, projects relevant context, and archives completed milestone history without bloating active prompts.
 - [ ] T-013 | Add policy gates and source-linked fact aging | depends: T-012 | autonomous: yes | accepts: Configured scoped policy checks gate verification, affected facts refresh automatically, and meaningful stalls raise durable blocker cards.
 ## Active Decisions
@@ -126,6 +126,11 @@ After approval, an implementation task must name an active outcome, remain withi
 - Do not seed a reusable task ID into a fresh draft queue. The placeholder `T-001` collided with the first natural real task; keep the queue empty until the approved plan supplies a real contract. Evidence: `internal/continuity/state.go`, `cmd/continuity/taskgraph_test.go`.
 
 ## Verification
+- clean task-graph CLI smoke: pass
+- sh -n .codex/hooks/continuity.sh: pass
+- go vet ./...: pass
+- go test -race ./... -count=1: pass
+- go test ./... -count=1: pass
 - Fresh init-to-approval CLI smoke: pass
 - go test ./... -count=1, go test -race ./... -count=1, go vet ./..., sh -n .codex/hooks/continuity.sh, and git diff --check: pass
 - go test ./... -count=1, go test -race ./... -count=1, go vet ./..., and git diff --check: pass
@@ -140,6 +145,7 @@ After approval, an implementation task must name an active outcome, remain withi
 - `continuity sync` preserves active task state while refreshing Git metadata — pass.
 - T-008 focused tests, `go test ./... -count=1`, `go test -race ./... -count=1`, `go vet ./...`, and `git diff --check` — pass; a fresh-repository smoke test verified optional Worktrunk templates plus explicit task bootstrap and named-branch claiming.
 ## Recent Material Changes
+- Integrated T-011 at b5aa35e6fade25fda72db7dead201dcc859843c6: Added outcome-bound task contracts, evidence-ranked ready work, derived technical task receipts, and selection rationale.
 - Integrated T-010 at 9e45630ac944af7223a07ba192a04f0532e47594: Added structured project-plan intake, explicit approval receipts, milestone activation, plan deltas, and scoped startup projection.
 - Integrated T-009 at 4dc3561f759d76c358192f53db5d2325e111953f: Made integration refresh the durable handoff with the completed task and safe next-session action.
 - Integrated T-008 at 62261c78c5253907df7f3e913a867369f6f7ab62: Added optional Worktrunk orientation templates, branch-exclusive live claims, and explicit approved-task bootstrap.
@@ -154,5 +160,5 @@ After approval, an implementation task must name an active outcome, remain withi
 - Added initial portable state engine, task graph, and unit tests.
 - Added adapter scaffolding to `continuity init` with preservation checks for existing instructions.
 ## Handoff
-Last completed: T-010 — Added structured project-plan intake, explicit approval receipts, milestone activation, plan deltas, and scoped startup projection.
-Immediate restart action: Run continuity status. If an approved task is ready, claim it with continuity start; otherwise wait for user direction or use continuity task add --approved only for explicitly approved work.
+Last completed: T-011 — Added outcome-bound task contracts, evidence-ranked ready work, derived technical task receipts, and selection rationale.
+Immediate restart action: Run continuity status and continuity ready. Claim a ready task with its durable contract; if an approved plan has no ready task, derive only a focused technical step inside its active outcome from an unclaimed integration checkout. In a legacy project, use continuity task add --approved only for explicitly approved work.
