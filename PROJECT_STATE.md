@@ -1,11 +1,11 @@
 ---
 schema: 2
-fingerprint: sha256:78abae85e3b594c400b73678fd0b47c6b85ff7a74c235c6946434600cd9d55be
+fingerprint: sha256:5e3c76a2c04b3558aef51a23348c5daedd7e53fb5f434db0bf93607c3cfd7400
 branch: main
-head: 5614ccf35b55eae9437f6efbb8217de4e25cf08f
+head: d33998bc58396873050ca6425f480583cb0368d9
 status: ready
 active_task: none
-updated_at: 2026-08-03T15:09:03Z
+updated_at: 2026-08-03T15:25:39Z
 ---
 
 # Continuity
@@ -47,7 +47,7 @@ Validation: none
 - [x] T-011 | Add outcome-linked autonomous task graph | depends: T-010 | autonomous: yes | accepts: Tasks require active approved outcomes and focused contracts, and agents can choose and claim valid ready work with recorded rationale.
 - [x] T-012 | Add automatic change capsules and context archives | depends: T-011 | autonomous: yes | accepts: Integration derives evidence-backed task capsules, projects relevant context, and archives completed milestone history without bloating active prompts.
 - [x] T-013 | Add policy gates and source-linked fact aging | depends: T-012 | autonomous: yes | accepts: Configured scoped policy checks gate verification, affected facts refresh automatically, and meaningful stalls raise durable blocker cards.
-- [ ] T-014 | Audit and harden existing continuity implementation | depends: none | autonomous: yes | accepts: Existing behavior is audited against the original intent; only evidenced defects are corrected; focused tests, race tests, and vet pass.
+- [x] T-014 | Audit and harden existing continuity implementation | depends: none | autonomous: yes | accepts: Existing behavior is audited against the original intent; only evidenced defects are corrected; focused tests, race tests, and vet pass.
 ## Active Decisions
 
 - D-001 — Keep committed durable project knowledge in `PROJECT_STATE.md`; Git is the archive. Keep short-lived same-machine ownership outside that file. Why: a bounded current projection avoids both vendor lock-in and transcript bloat without turning progress pings into merge conflicts. Evidence: `internal/continuity/state.go`, `internal/continuity/coordination.go`.
@@ -143,6 +143,15 @@ Changed paths: .agents/skills/project-continuity/SKILL.md, .agents/skills/projec
 Validation: go test ./... -count=1: pass; go test -race ./... -count=1: pass; go vet ./...: pass
 Next: No unclaimed autonomous task is ready.
 Archive: PROJECT_HISTORY/changes/T-013.md
+
+### Change T-014
+Paths: .agents/skills/project-continuity, .agents/worktrunk, AGENTS.md, PROJECT_STATE.md, README.md, cmd/continuity, internal/continuity
+Summary: Intent: Audit and harden existing continuity implementation | Result: Streamlined session resumption, safe owner renewal, and mature-repository adapter integration.
+Details: Commit: d33998bc58396873050ca6425f480583cb0368d9
+Changed paths: .agents/skills/project-continuity/SKILL.md, .agents/worktrunk/README.md, AGENTS.md, PROJECT_STATE.md, README.md, cmd/continuity/coordination.go, cmd/continuity/main_test.go, internal/continuity/adapters.go (+1 more)
+Validation: go test ./... -count=1: pass; go test -race ./... -count=1: pass; go vet ./...: pass
+Next: No unclaimed autonomous task is ready.
+Archive: PROJECT_HISTORY/changes/T-014.md
 ## Known Pitfalls and Failed Approaches
 
 - Record only failures that remain relevant. Include the failed approach, evidence, resolution, and affected paths.
@@ -164,6 +173,11 @@ Archive: PROJECT_HISTORY/changes/T-013.md
 - Do not equate preserving an existing harness instruction file with integrating Continuity. Preserve its content byte-for-byte and append one idempotent marked bridge when it does not already reference the shared protocol. Evidence: `internal/continuity/adapters.go`.
 
 ## Verification
+- existing-repository init smoke: preserved policy and merged Codex/OpenCode adapters
+- sh -n .codex/hooks/continuity.sh: pass
+- go vet ./...: pass
+- go test -race ./... -count=1: pass
+- go test ./... -count=1: pass
 - governance CLI smoke: pass
 - sh -n .codex/hooks/continuity.sh: pass
 - go vet ./...: pass
@@ -193,6 +207,7 @@ Archive: PROJECT_HISTORY/changes/T-013.md
 - `continuity sync` preserves active task state while refreshing Git metadata — pass.
 - T-008 focused tests, `go test ./... -count=1`, `go test -race ./... -count=1`, `go vet ./...`, and `git diff --check` — pass; a fresh-repository smoke test verified optional Worktrunk templates plus explicit task bootstrap and named-branch claiming.
 ## Recent Material Changes
+- Integrated T-014 at d33998bc58396873050ca6425f480583cb0368d9: Streamlined session resumption, safe owner renewal, and mature-repository adapter integration.
 - Integrated T-013 at c2543810461558812ff1aee1e55f6f99e6d3930b: Added portable policy gates, fact aging, and durable blockers.
 - Integrated T-012 at 23ba7b898505f535687b34792ce9ee74ad220047: Added evidence-backed change capsules, archives, and outcome history.
 - Integrated T-011 at b5aa35e6fade25fda72db7dead201dcc859843c6: Added outcome-bound task contracts, evidence-ranked ready work, derived technical task receipts, and selection rationale.
@@ -210,5 +225,5 @@ Archive: PROJECT_HISTORY/changes/T-013.md
 - Added initial portable state engine, task graph, and unit tests.
 - Added adapter scaffolding to `continuity init` with preservation checks for existing instructions.
 ## Handoff
-Last completed: T-013 — Added portable policy gates, fact aging, and durable blockers.
+Last completed: T-014 — Streamlined session resumption, safe owner renewal, and mature-repository adapter integration.
 Immediate restart action: Run continuity ready and wait for user-approved work before changing product scope.
