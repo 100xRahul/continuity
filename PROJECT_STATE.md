@@ -1,11 +1,11 @@
 ---
 schema: 2
-fingerprint: sha256:77a88399dd78ae1a9ab963d7431666f0e5e02d6732dec2557a02651412fd007a
+fingerprint: sha256:274b2a1f887e9ca2b71517710cedc9d7921c5c2fdcb66141fd528ba3b88a8895
 branch: main
-head: f97c635432154ee4b122742b233c6614788a7b61
+head: 9fcecce0fef63db55c3c1ab80a63d485361030aa
 status: ready
 active_task: none
-updated_at: 2026-08-03T15:39:47Z
+updated_at: 2026-08-03T16:00:06Z
 ---
 
 # Continuity
@@ -49,7 +49,7 @@ Validation: none
 - [x] T-013 | Add policy gates and source-linked fact aging | depends: T-012 | autonomous: yes | accepts: Configured scoped policy checks gate verification, affected facts refresh automatically, and meaningful stalls raise durable blocker cards.
 - [x] T-014 | Audit and harden existing continuity implementation | depends: none | autonomous: yes | accepts: Existing behavior is audited against the original intent; only evidenced defects are corrected; focused tests, race tests, and vet pass.
 - [x] T-015 | Align generated handoffs with restart index | depends: T-014 | autonomous: yes | accepts: Generated no-work and next-task handoffs direct fresh agents through continuity context without restoring redundant startup commands.
-- [ ] T-016 | Harden bounded context and state density | depends: T-015 | autonomous: yes | accepts: Cold-start context never hides gates or recommends blocked work, durable state compacts repetitive history without losing archives, and AGENTS.md remains a minimal cross-harness bootloader.
+- [x] T-016 | Harden bounded context and state density | depends: T-015 | autonomous: yes | accepts: Cold-start context never hides gates or recommends blocked work, durable state compacts repetitive history without losing archives, and AGENTS.md remains a minimal cross-harness bootloader.
 ## Active Decisions
 
 - D-001 — Keep committed durable project knowledge in `PROJECT_STATE.md`; Git is the archive. Keep short-lived same-machine ownership outside that file. Why: a bounded current projection avoids both vendor lock-in and transcript bloat without turning progress pings into merge conflicts. Evidence: `internal/continuity/state.go`, `internal/continuity/coordination.go`.
@@ -129,15 +129,6 @@ Paths: .agents/skills/project-continuity, AGENTS.md, README.md, cmd/continuity, 
 Summary: Facts, blockers, and policies make changing evidence or stalled work visible across harnesses without relying on chat memory.
 Details: A Fact Card names its source paths and becomes stale, never silently rewritten, when those paths change during synchronization, plan or policy update, or integration. Overlapping work waits for an explicit `fact confirm` review receipt. A Blocker Card records a falsifiable hypothesis, evidence, and next action; repeat attempts need new evidence or a new hypothesis. `CONTINUITY_POLICY.md` contains only explicitly user-approved scoped checks, which run before finalization and checkpoint rather than complete on failure.
 
-### Change T-013
-Paths: .agents/skills/project-continuity, .agents/skills/project-continuity/references, AGENTS.md, README.md, cmd/continuity, internal/continuity
-Summary: Intent: Add policy gates and source-linked fact aging | Result: Added portable policy gates, fact aging, and durable blockers.
-Details: Commit: c2543810461558812ff1aee1e55f6f99e6d3930b
-Changed paths: .agents/skills/project-continuity/SKILL.md, .agents/skills/project-continuity/references/governance-schema.md, .agents/skills/project-continuity/references/state-schema.md, AGENTS.md, README.md, cmd/continuity/coordination.go, cmd/continuity/governance.go, cmd/continuity/governance_test.go (+14 more)
-Validation: go test ./... -count=1: pass; go test -race ./... -count=1: pass; go vet ./...: pass
-Next: No unclaimed autonomous task is ready.
-Archive: PROJECT_HISTORY/changes/T-013.md
-
 ### Change T-014
 Paths: .agents/skills/project-continuity, .agents/worktrunk, AGENTS.md, PROJECT_STATE.md, README.md, cmd/continuity, internal/continuity
 Summary: Intent: Audit and harden existing continuity implementation | Result: Streamlined session resumption, safe owner renewal, and mature-repository adapter integration.
@@ -155,6 +146,15 @@ Changed paths: PROJECT_STATE.md, cmd/continuity/history.go, cmd/continuity/histo
 Validation: go test ./... -count=1: pass; go test -race ./... -count=1: pass; go vet ./...: pass
 Next: No unclaimed autonomous task is ready.
 Archive: PROJECT_HISTORY/changes/T-015.md
+
+### Change T-016
+Paths: .agents/skills/project-continuity, .agents/skills/project-continuity/references, AGENTS.md, PROJECT_STATE.md, README.md, cmd/continuity, internal/continuity
+Summary: Intent: Harden bounded context and state density | Result: Made restart context gate-safe, compacted archive-backed operational history, and reduced AGENTS to a bootloader.
+Details: Commit: 9fcecce0fef63db55c3c1ab80a63d485361030aa
+Changed paths: .agents/skills/project-continuity/SKILL.md, .agents/skills/project-continuity/references/state-schema.md, AGENTS.md, PROJECT_STATE.md, README.md, cmd/continuity/coordination.go, cmd/continuity/history.go, cmd/continuity/history_test.go (+4 more)
+Validation: go test ./... -count=1: pass; go test -race ./... -count=1: pass; go vet ./...: pass
+Next: No unclaimed autonomous task is ready.
+Archive: PROJECT_HISTORY/changes/T-016.md
 ## Known Pitfalls and Failed Approaches
 
 - Record only failures that remain relevant. Include the failed approach, evidence, resolution, and affected paths.
@@ -177,43 +177,20 @@ Archive: PROJECT_HISTORY/changes/T-015.md
 - Do not byte-truncate a restart packet or let archive-backed repetition grow without a retention rule. Keep its safety block whole, omit optional sections structurally, and compact only history recoverable from Git or committed archives. Evidence: `cmd/continuity/coordination.go`, `cmd/continuity/history.go`.
 
 ## Verification
+- git diff --check: pass
+- fresh init, check, 1800-byte context, and compact AGENTS smoke: pass
+- hook shell and JSON validation: pass
 - go vet ./...: pass
 - go test -race ./... -count=1: pass
 - go test ./... -count=1: pass
 - existing-repository init smoke: preserved policy and merged Codex/OpenCode adapters
 - sh -n .codex/hooks/continuity.sh: pass
-- go vet ./...: pass
-- go test -race ./... -count=1: pass
-- go test ./... -count=1: pass
 - governance CLI smoke: pass
-- sh -n .codex/hooks/continuity.sh: pass
-- go vet ./...: pass
-- go test -race ./... -count=1: pass
-- go test ./... -count=1: pass
 - fresh change-history lifecycle smoke: pass
-- sh -n .codex/hooks/continuity.sh: pass
-- go vet ./...: pass
-- go test -race ./... -count=1: pass
-- go test ./... -count=1: pass
 - clean task-graph CLI smoke: pass
-- sh -n .codex/hooks/continuity.sh: pass
-- go vet ./...: pass
-- go test -race ./... -count=1: pass
-- go test ./... -count=1: pass
 - Fresh init-to-approval CLI smoke: pass
-- go test ./... -count=1, go test -race ./... -count=1, go vet ./..., sh -n .codex/hooks/continuity.sh, and git diff --check: pass
-- go test ./... -count=1, go test -race ./... -count=1, go vet ./..., and git diff --check: pass
-- Fresh init smoke: Worktrunk templates, approved task bootstrap, named-branch claim, and release: pass
-- go test ./... -count=1, go test -race ./... -count=1, go vet ./..., and git diff --check: pass
-- `go test ./... -count=1`, `go test -race ./... -count=1`, `go vet ./...`, and `git diff --check` — pass.
-- Focused capsule selection, malformed scope/budget, and large-capsule bounded-packet tests — pass.
-- Fresh `continuity init`, schema-2 validation, scoped context, and obsolete-command smoke test — pass.
-- `sh -n .codex/hooks/continuity.sh` and Ruby JSON parsing of `.codex/hooks.json` — pass.
-- Simulated Codex `SessionStart`, `SubagentStart`, user-prompt pulse, Bash, and `apply_patch` hook inputs — pass; non-owner writes are denied and read-only inspection remains available.
-- Fresh temporary-repository `continuity init` followed by `continuity check` — pass.
-- `continuity sync` preserves active task state while refreshing Git metadata — pass.
-- T-008 focused tests, `go test ./... -count=1`, `go test -race ./... -count=1`, `go vet ./...`, and `git diff --check` — pass; a fresh-repository smoke test verified optional Worktrunk templates plus explicit task bootstrap and named-branch claiming.
 ## Recent Material Changes
+- Integrated T-016 at 9fcecce0fef63db55c3c1ab80a63d485361030aa: Made restart context gate-safe, compacted archive-backed operational history, and reduced AGENTS to a bootloader.
 - Integrated T-015 at 16e265803e8a6502fc9e007ca37b3ca38a7d2c4e: Aligned generated handoffs with the single restart index.
 - Integrated T-014 at d33998bc58396873050ca6425f480583cb0368d9: Streamlined session resumption, safe owner renewal, and mature-repository adapter integration.
 - Integrated T-013 at c2543810461558812ff1aee1e55f6f99e6d3930b: Added portable policy gates, fact aging, and durable blockers.
@@ -225,13 +202,6 @@ Archive: PROJECT_HISTORY/changes/T-015.md
 - Integrated T-007 at 259d2a238a309e2a08f64a39a929ad600f554339: Added schema-2 30k-token durable capsules with selective bounded context and no migration path.
 - Integrated T-006 at 667498ef75cbec10d4a2caeb99b0f6d722f2cc82: Implemented bounded same-machine multi-session coordination with exclusive claims, safe lifecycle integration, and Codex live-context hooks.
 - Completed T-005: Added and verified post-commit metadata synchronization; the command refreshes branch, HEAD, fingerprint, and timestamp without altering task state.
-- Completed T-004: Completed fresh-repository scaffolding, installation and cross-harness documentation, durable failure notes, and final release validation including unit, race, vet, skill, CLI, and fresh-init checks.
-- Completed T-003: Verified lifecycle completion, dependency blocking, stale source rejection, Git-backed reconciliation, branch snapshots, and review-required evidence anchors through automated tests and a real stale-state run.
-- Completed T-002: Added and tested shared repository adapters for Codex, Claude Code, Cursor, GitHub Copilot CLI, Gemini CLI, and OpenCode; all direct agents to the same project state and continuity workflow.
-- Completed T-001: Implemented the Go continuity CLI with Markdown state validation, source fingerprints, Git snapshots, reconciliation output, acceptance-aware task dependencies, checkpoint/finalize lifecycle, and command-level tests.
-- State initialized for Continuity.
-- Added initial portable state engine, task graph, and unit tests.
-- Added adapter scaffolding to `continuity init` with preservation checks for existing instructions.
 ## Handoff
-Last completed: T-015 — Aligned generated handoffs with the single restart index.
+Last completed: T-016 — Made restart context gate-safe, compacted archive-backed operational history, and reduced AGENTS to a bootloader.
 Immediate restart action: Run continuity context and wait for user-approved work before changing product scope.
