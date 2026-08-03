@@ -29,7 +29,7 @@ func TestUpsertChangeCapsulePreservesArchitectureAndBoundsGeneratedHistory(t *te
 			Result:      "Validated " + id,
 			Paths:       []string{"cmd/continuity/" + id + ".go"},
 			Evidence:    []string{"go test: pass"},
-			Next:        nextWork{Summary: "No task", Action: "Run continuity ready."},
+			Next:        nextWork{Summary: "No task", Action: "Run continuity context."},
 			ArchivePath: changeArchivePath(id),
 		}
 		if err := upsertChangeCapsule(state, record); err != nil {

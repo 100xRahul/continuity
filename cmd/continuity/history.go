@@ -114,12 +114,12 @@ func selectNextWork(root string, state *continuity.State) (nextWork, error) {
 			}
 			return nextWork{
 				Summary: "No unclaimed autonomous task is ready.",
-				Action:  "Run continuity ready. If no task is blocked, inspect the active approved outcome and derive only its next focused technical step from an unclaimed integration checkout.",
+				Action:  "Run continuity context. If its restart index reports no blocked task, inspect the active approved outcome and derive only its next focused technical step from an unclaimed integration checkout.",
 			}, nil
 		}
 		return nextWork{
 			Summary: "No unclaimed autonomous task is ready.",
-			Action:  "Run continuity ready and wait for user-approved work before changing product scope.",
+			Action:  "Run continuity context and wait for user-approved work before changing product scope.",
 		}, nil
 	}
 	// All ready tasks were blocked by a stale fact or blocker card. The
@@ -190,7 +190,7 @@ func nextWorkForCandidate(candidate readyCandidate) nextWork {
 		summary += fmt.Sprintf(" | outcome: %s (priority %d), unblocks: %d", candidate.Outcome.ID, candidate.OutcomePriority, candidate.Unblocks)
 		return nextWork{
 			Summary: summary,
-			Action:  fmt.Sprintf("Run continuity context --scope %s and continuity ready, then claim %s with an evidence-based --selection-reason.", scope, candidate.Task.ID),
+			Action:  fmt.Sprintf("Run continuity context --scope %s and use its printed continuity start command to claim %s with the supplied selection evidence.", scope, candidate.Task.ID),
 		}
 	}
 	if candidate.Unblocks > 0 {
@@ -198,7 +198,7 @@ func nextWorkForCandidate(candidate readyCandidate) nextWork {
 	}
 	return nextWork{
 		Summary: summary,
-		Action:  fmt.Sprintf("Run continuity context --scope %s and claim %s with continuity start.", scope, candidate.Task.ID),
+		Action:  fmt.Sprintf("Run continuity context --scope %s and use its printed continuity start command to claim %s.", scope, candidate.Task.ID),
 	}
 }
 

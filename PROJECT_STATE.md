@@ -2,10 +2,10 @@
 schema: 2
 fingerprint: sha256:5e3c76a2c04b3558aef51a23348c5daedd7e53fb5f434db0bf93607c3cfd7400
 branch: main
-head: d33998bc58396873050ca6425f480583cb0368d9
+head: 9627133b5a5469d05cdbe4171fbc906504fb547a
 status: ready
 active_task: none
-updated_at: 2026-08-03T15:25:39Z
+updated_at: 2026-08-03T15:26:23Z
 ---
 
 # Continuity
@@ -48,6 +48,7 @@ Validation: none
 - [x] T-012 | Add automatic change capsules and context archives | depends: T-011 | autonomous: yes | accepts: Integration derives evidence-backed task capsules, projects relevant context, and archives completed milestone history without bloating active prompts.
 - [x] T-013 | Add policy gates and source-linked fact aging | depends: T-012 | autonomous: yes | accepts: Configured scoped policy checks gate verification, affected facts refresh automatically, and meaningful stalls raise durable blocker cards.
 - [x] T-014 | Audit and harden existing continuity implementation | depends: none | autonomous: yes | accepts: Existing behavior is audited against the original intent; only evidenced defects are corrected; focused tests, race tests, and vet pass.
+- [ ] T-015 | Align generated handoffs with restart index | depends: T-014 | autonomous: yes | accepts: Generated no-work and next-task handoffs direct fresh agents through continuity context without restoring redundant startup commands.
 ## Active Decisions
 
 - D-001 — Keep committed durable project knowledge in `PROJECT_STATE.md`; Git is the archive. Keep short-lived same-machine ownership outside that file. Why: a bounded current projection avoids both vendor lock-in and transcript bloat without turning progress pings into merge conflicts. Evidence: `internal/continuity/state.go`, `internal/continuity/coordination.go`.
