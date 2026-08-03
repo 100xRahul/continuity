@@ -1,11 +1,11 @@
 ---
 schema: 2
-fingerprint: sha256:5e3c76a2c04b3558aef51a23348c5daedd7e53fb5f434db0bf93607c3cfd7400
+fingerprint: sha256:77a88399dd78ae1a9ab963d7431666f0e5e02d6732dec2557a02651412fd007a
 branch: main
-head: 9627133b5a5469d05cdbe4171fbc906504fb547a
+head: 16e265803e8a6502fc9e007ca37b3ca38a7d2c4e
 status: ready
 active_task: none
-updated_at: 2026-08-03T15:26:23Z
+updated_at: 2026-08-03T15:27:48Z
 ---
 
 # Continuity
@@ -48,7 +48,7 @@ Validation: none
 - [x] T-012 | Add automatic change capsules and context archives | depends: T-011 | autonomous: yes | accepts: Integration derives evidence-backed task capsules, projects relevant context, and archives completed milestone history without bloating active prompts.
 - [x] T-013 | Add policy gates and source-linked fact aging | depends: T-012 | autonomous: yes | accepts: Configured scoped policy checks gate verification, affected facts refresh automatically, and meaningful stalls raise durable blocker cards.
 - [x] T-014 | Audit and harden existing continuity implementation | depends: none | autonomous: yes | accepts: Existing behavior is audited against the original intent; only evidenced defects are corrected; focused tests, race tests, and vet pass.
-- [ ] T-015 | Align generated handoffs with restart index | depends: T-014 | autonomous: yes | accepts: Generated no-work and next-task handoffs direct fresh agents through continuity context without restoring redundant startup commands.
+- [x] T-015 | Align generated handoffs with restart index | depends: T-014 | autonomous: yes | accepts: Generated no-work and next-task handoffs direct fresh agents through continuity context without restoring redundant startup commands.
 ## Active Decisions
 
 - D-001 — Keep committed durable project knowledge in `PROJECT_STATE.md`; Git is the archive. Keep short-lived same-machine ownership outside that file. Why: a bounded current projection avoids both vendor lock-in and transcript bloat without turning progress pings into merge conflicts. Evidence: `internal/continuity/state.go`, `internal/continuity/coordination.go`.
@@ -127,15 +127,6 @@ Paths: .agents/skills/project-continuity, AGENTS.md, README.md, cmd/continuity, 
 Summary: Facts, blockers, and policies make changing evidence or stalled work visible across harnesses without relying on chat memory.
 Details: A Fact Card names its source paths and becomes stale, never silently rewritten, when those paths change during synchronization, plan or policy update, or integration. Overlapping work waits for an explicit `fact confirm` review receipt. A Blocker Card records a falsifiable hypothesis, evidence, and next action; repeat attempts need new evidence or a new hypothesis. `CONTINUITY_POLICY.md` contains only explicitly user-approved scoped checks, which run before finalization and checkpoint rather than complete on failure.
 
-### Change T-012
-Paths: .agents/skills/project-continuity, .agents/skills/project-continuity/references, AGENTS.md, README.md, cmd/continuity, internal/continuity
-Summary: Intent: Add automatic change capsules and context archives | Result: Added evidence-backed change capsules, archives, and outcome history.
-Details: Commit: 23ba7b898505f535687b34792ce9ee74ad220047
-Changed paths: .agents/skills/project-continuity/SKILL.md, .agents/skills/project-continuity/references/plan-schema.md, .agents/skills/project-continuity/references/state-schema.md, AGENTS.md, README.md, cmd/continuity/coordination.go, cmd/continuity/history.go, cmd/continuity/history_test.go (+11 more)
-Validation: go test ./... -count=1: pass; go test -race ./... -count=1: pass; go vet ./...: pass
-Next: T-013 — Add policy gates and source-linked fact aging
-Archive: PROJECT_HISTORY/changes/T-012.md
-
 ### Change T-013
 Paths: .agents/skills/project-continuity, .agents/skills/project-continuity/references, AGENTS.md, README.md, cmd/continuity, internal/continuity
 Summary: Intent: Add policy gates and source-linked fact aging | Result: Added portable policy gates, fact aging, and durable blockers.
@@ -153,6 +144,15 @@ Changed paths: .agents/skills/project-continuity/SKILL.md, .agents/worktrunk/REA
 Validation: go test ./... -count=1: pass; go test -race ./... -count=1: pass; go vet ./...: pass
 Next: No unclaimed autonomous task is ready.
 Archive: PROJECT_HISTORY/changes/T-014.md
+
+### Change T-015
+Paths: PROJECT_STATE.md, cmd/continuity/history.go, cmd/continuity/history_test.go
+Summary: Intent: Align generated handoffs with restart index | Result: Aligned generated handoffs with the single restart index.
+Details: Commit: 16e265803e8a6502fc9e007ca37b3ca38a7d2c4e
+Changed paths: PROJECT_STATE.md, cmd/continuity/history.go, cmd/continuity/history_test.go
+Validation: go test ./... -count=1: pass; go test -race ./... -count=1: pass; go vet ./...: pass
+Next: No unclaimed autonomous task is ready.
+Archive: PROJECT_HISTORY/changes/T-015.md
 ## Known Pitfalls and Failed Approaches
 
 - Record only failures that remain relevant. Include the failed approach, evidence, resolution, and affected paths.
@@ -174,6 +174,9 @@ Archive: PROJECT_HISTORY/changes/T-014.md
 - Do not equate preserving an existing harness instruction file with integrating Continuity. Preserve its content byte-for-byte and append one idempotent marked bridge when it does not already reference the shared protocol. Evidence: `internal/continuity/adapters.go`.
 
 ## Verification
+- go vet ./...: pass
+- go test -race ./... -count=1: pass
+- go test ./... -count=1: pass
 - existing-repository init smoke: preserved policy and merged Codex/OpenCode adapters
 - sh -n .codex/hooks/continuity.sh: pass
 - go vet ./...: pass
@@ -208,6 +211,7 @@ Archive: PROJECT_HISTORY/changes/T-014.md
 - `continuity sync` preserves active task state while refreshing Git metadata — pass.
 - T-008 focused tests, `go test ./... -count=1`, `go test -race ./... -count=1`, `go vet ./...`, and `git diff --check` — pass; a fresh-repository smoke test verified optional Worktrunk templates plus explicit task bootstrap and named-branch claiming.
 ## Recent Material Changes
+- Integrated T-015 at 16e265803e8a6502fc9e007ca37b3ca38a7d2c4e: Aligned generated handoffs with the single restart index.
 - Integrated T-014 at d33998bc58396873050ca6425f480583cb0368d9: Streamlined session resumption, safe owner renewal, and mature-repository adapter integration.
 - Integrated T-013 at c2543810461558812ff1aee1e55f6f99e6d3930b: Added portable policy gates, fact aging, and durable blockers.
 - Integrated T-012 at 23ba7b898505f535687b34792ce9ee74ad220047: Added evidence-backed change capsules, archives, and outcome history.
@@ -226,5 +230,5 @@ Archive: PROJECT_HISTORY/changes/T-014.md
 - Added initial portable state engine, task graph, and unit tests.
 - Added adapter scaffolding to `continuity init` with preservation checks for existing instructions.
 ## Handoff
-Last completed: T-014 — Streamlined session resumption, safe owner renewal, and mature-repository adapter integration.
-Immediate restart action: Run continuity ready and wait for user-approved work before changing product scope.
+Last completed: T-015 — Aligned generated handoffs with the single restart index.
+Immediate restart action: Run continuity context and wait for user-approved work before changing product scope.
