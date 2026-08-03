@@ -2,10 +2,10 @@
 schema: 2
 fingerprint: sha256:78abae85e3b594c400b73678fd0b47c6b85ff7a74c235c6946434600cd9d55be
 branch: main
-head: c2543810461558812ff1aee1e55f6f99e6d3930b
+head: 5614ccf35b55eae9437f6efbb8217de4e25cf08f
 status: ready
 active_task: none
-updated_at: 2026-07-30T18:34:30Z
+updated_at: 2026-08-03T15:09:03Z
 ---
 
 # Continuity
@@ -47,12 +47,13 @@ Validation: none
 - [x] T-011 | Add outcome-linked autonomous task graph | depends: T-010 | autonomous: yes | accepts: Tasks require active approved outcomes and focused contracts, and agents can choose and claim valid ready work with recorded rationale.
 - [x] T-012 | Add automatic change capsules and context archives | depends: T-011 | autonomous: yes | accepts: Integration derives evidence-backed task capsules, projects relevant context, and archives completed milestone history without bloating active prompts.
 - [x] T-013 | Add policy gates and source-linked fact aging | depends: T-012 | autonomous: yes | accepts: Configured scoped policy checks gate verification, affected facts refresh automatically, and meaningful stalls raise durable blocker cards.
+- [ ] T-014 | Audit and harden existing continuity implementation | depends: none | autonomous: yes | accepts: Existing behavior is audited against the original intent; only evidenced defects are corrected; focused tests, race tests, and vet pass.
 ## Active Decisions
 
 - D-001 — Keep committed durable project knowledge in `PROJECT_STATE.md`; Git is the archive. Keep short-lived same-machine ownership outside that file. Why: a bounded current projection avoids both vendor lock-in and transcript bloat without turning progress pings into merge conflicts. Evidence: `internal/continuity/state.go`, `internal/continuity/coordination.go`.
 - D-002 — Keep the core dependency-free and harness-neutral. Why: the CLI must work when hooks, skills, native memory, or MCP are unavailable. Evidence: `cmd/continuity/main.go`.
 - D-003 — Treat native skills and hooks as adapters, not project authority. Why: harness support varies; the same repository state must remain portable. Evidence: `AGENTS.md`, `.agents/skills/project-continuity/`.
-- D-004 — `continuity init` installs only missing protocol and adapter files. Why: existing repository instruction files are user-owned and cannot be safely merged or overwritten. Evidence: `internal/continuity/adapters.go`.
+- D-004 — `continuity init` preserves existing instruction content, appends only a compact marked bridge when the shared protocol is absent, and semantically merges supported strict-JSON Codex/OpenCode adapters; unsupported structured files are preserved with an explicit warning and tool-owned skill paths remain non-overwriting. Why: silently skipping an existing adapter makes Continuity undiscoverable in the exact mature projects that need it, while bounded text append and schema-aware JSON merge preserve user policy. Evidence: `internal/continuity/adapters.go`.
 - D-005 — Store live claims, leases, and pending completions under Git's common directory. Why: linked local worktrees share this local board without committing ephemeral progress or creating branch conflicts. Evidence: `internal/continuity/coordination.go`.
 - D-006 — One checkout has one writer; parallel writers require separate worktrees, approved tasks, and non-overlapping scopes. Why: independent agents cannot safely infer whether apparent unrelated changes share hidden assumptions. Evidence: `cmd/continuity/coordination.go`, `AGENTS.md`.
 - D-007 — Codex hooks preload bounded context, emit a small live pulse on later prompts, and guard documented Bash and patch paths; child agents remain read-only in their parent checkout. Why: this surfaces live ownership without repeated full-state stuffing, while Codex child hooks inherit the parent session ID and cannot safely distinguish simultaneous child writers. Evidence: `.codex/hooks.json`, `cmd/continuity/coordination.go`.
@@ -89,7 +90,7 @@ Validation: none
 - Task graph — `internal/continuity/tasks.go`, `cmd/continuity/main.go` — legacy and outcome-bound task contracts, scope/validation enforcement, derived technical task records, dependency readiness, and evidence-ranked next-task selection.
 - Delivery plan — `internal/continuity/plan.go`, `cmd/continuity/plan.go` — structured Markdown roadmap, sources, outcomes, decisions, explicit approval, evidence-backed outcome completion, milestone archiving, and plan deltas.
 - Evidence gates — `internal/continuity/facts.go`, `internal/continuity/policy.go`, `cmd/continuity/governance.go`, `cmd/continuity/policy.go` — source-linked fact aging, durable blocker cards, explicitly approved scoped finalization checks, and gate-aware handoffs.
-- Adapter installer — `internal/continuity/adapters.go` — non-overwriting protocol, skill, harness adapters, and optional Worktrunk bridge scaffolding for new repositories.
+- Adapter installer — `internal/continuity/adapters.go` — non-overwriting scaffolding, idempotent marked text bridges, and schema-aware Codex/OpenCode merges that connect existing harness configuration to the shared protocol.
 - Codex adapter — `.codex/hooks.json`, `.codex/hooks/continuity.sh` — optional session context and pre-write guardrails after project trust.
 - Tests — `internal/continuity/*_test.go` — state round trip, fingerprint exclusions, task readiness, and cycles.
 
@@ -160,6 +161,7 @@ Archive: PROJECT_HISTORY/changes/T-013.md
 - Do not derive another task merely because a completed active outcome has no ready task. Verify its acceptance and record `plan outcome complete`; the command refuses while any linked task remains unintegrated. Evidence: `cmd/continuity/history.go`, `cmd/continuity/plan.go`, `cmd/continuity/plan_test.go`.
 - Do not silently refresh a fact after its named source changes or retry a stalled task with the same evidence. Synchronize to mark affected facts stale, explicitly confirm review evidence, and resolve blockers only with new evidence or a new hypothesis. Evidence: `cmd/continuity/governance.go`, `internal/continuity/facts.go`.
 - Do not let an ignored fingerprint path bypass fact aging. Claim and check flows separately inspect changed source-linked paths, including project instructions such as `README.md`. Evidence: `cmd/continuity/main.go`, `cmd/continuity/governance_test.go`.
+- Do not equate preserving an existing harness instruction file with integrating Continuity. Preserve its content byte-for-byte and append one idempotent marked bridge when it does not already reference the shared protocol. Evidence: `internal/continuity/adapters.go`.
 
 ## Verification
 - governance CLI smoke: pass

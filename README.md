@@ -38,6 +38,8 @@ continuity init --project "Example" --objective "The approved outcome."
 
 Commit `PROJECT_PLAN.md`, `PROJECT_STATE.md`, `AGENTS.md`, `.agents/skills/`, `.codex/hooks.json`, and the source. Do not commit the compiled binary or Git's local coordination store.
 
+When a repository already has `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, or Copilot instructions, initialization preserves every existing byte and appends only a small marked bridge to the shared protocol. Existing strict-JSON Codex and OpenCode configurations are semantically merged so their settings and hooks remain intact. Unsupported or non-JSON structured configuration is preserved with an explicit manual-attention warning, and tool-owned skill paths are never overwritten. This avoids the previous failure mode where “preserving” an existing adapter also left that harness unaware Continuity existed.
+
 ## Project intake
 
 `continuity init` creates a draft `PROJECT_PLAN.md`. The agent inspects repository facts, interviews you one decision at a time where product judgment is required, and records compact outcomes, constraints, assumptions, and decision cards. It does not preserve raw chat.
@@ -55,8 +57,7 @@ Only the approved active milestone becomes executable. Later roadmap items remai
 ```text
 new session
   -> continuity context --owner <harness:session-id>
-  -> continuity status
-  -> continuity ready
+  -> follow its ownership/freshness gate and highest-ranked approved next action
   -> continuity start --id T-001 --owner <harness:session-id> --selection-reason "why this is the best ready step"
   -> work + continuity checkpoint
   -> commit + continuity finalize --commit <commit> --evidence 'test: pass' # runs relevant approved policy checks
@@ -78,13 +79,13 @@ The repository includes optional Codex hooks:
 
 Trust the project-local hooks once with `/hooks`. Hooks are a convenience and guardrail, not the authority: the portable CLI and claim store remain the source of truth. They cover Codex's documented Bash and patch tool paths, but no hook should be treated as a complete sandbox against manual or external-process writes.
 
-If hooks are unavailable, run `continuity context` and `continuity status` at the start of every session. A fresh session never needs to reconstruct the whole codebase before it knows whether another worker is active.
+If hooks are unavailable, run `continuity context` at the start of every session. It is the single bounded restart index: it reports ownership, refuses to recommend a claim from stale state, and prints the highest-ranked approved next action. `continuity status` and `continuity ready` remain available for deeper diagnostics. A returning owner also renews its own unrecovered claim, so a long unattended operation does not require manual lease recovery; it can never revive a claim another worker has already recovered.
 
 ## Commands
 
 ```text
 continuity brief                  print the full durable project index
-continuity context                print bounded live context; use --scope for relevant capsules
+continuity context                print the bounded restart index and next approved action; use --scope for relevant capsules
 continuity status                 show active claims and pending completions
 continuity check                  validate durable state, task graph, and freshness
 continuity reconcile              list relevant changes since durable synchronization

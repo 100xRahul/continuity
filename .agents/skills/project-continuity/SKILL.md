@@ -9,11 +9,11 @@ Use the committed project index for durable meaning and the live local claim boa
 
 ## Resume
 
-1. Use automatic harness context when available; otherwise run `continuity context --owner <harness:session-id>` and `continuity status`. Codex may use `--session` as a convenience alias.
+1. Use automatic harness context when available; otherwise run `continuity context --owner <harness:session-id>`. Codex may use `--session` as a convenience alias. The bounded packet reports live ownership, blocks stale-state claims, and names the next approved action; use `status` or `ready` only for deeper diagnostics.
 2. If another owner holds this worktree, do not edit or reinterpret its changes. Work read-only, wait, or use a separate worktree.
 3. A Codex child agent is read-only in its parent worktree; use a separate worktree and claim for a child writer.
 4. If state is stale, run `continuity reconcile`; inspect only listed changes and mapped code. Update durable facts and run `continuity sync` before claiming a task.
-5. Run `continuity ready` and select only an approved, unblocked `autonomous: yes` task with observable acceptance criteria. For planned work, use its outcome priority and direct unblocking evidence, then record the reason at claim time.
+5. Follow the context packet's highest-ranked approved, unblocked `autonomous: yes` task with observable acceptance criteria. For planned work, use its outcome priority and direct unblocking evidence, then record the supplied reason at claim time. Use `continuity ready` when the ranking needs deeper inspection.
 
 ## Evidence gates
 

@@ -11,8 +11,8 @@ Claims stay explicit because a claim needs the real harness worker identity and 
 ## Parallel worker flow
 
 1. Create a dedicated branch and worktree: `wt switch --create agent-auth`.
-2. Start the harness in that worktree, then use that run's real owner ID (for example, `claude:agent-auth`): `continuity context --owner <harness:session-id> --scope internal/auth` and `continuity status`.
-3. Run `continuity ready`, then claim the selected task with that same owner. For a planned task: `continuity start --id T-001 --owner <harness:session-id> --selection-reason "highest-priority ready outcome; unblocks the next task"`. Its goal, acceptance, validation, and focused scope come from the task contract by default.
+2. Start the harness in that worktree, then use that run's real owner ID (for example, `claude:agent-auth`): `continuity context --owner <harness:session-id> --scope internal/auth`. The packet reports ownership, stale-state gates, and the highest-ranked approved next action; use `status` or `ready` only for deeper diagnostics.
+3. Claim the task named by that packet with the same owner and its supplied selection evidence. For a planned task: `continuity start --id T-001 --owner <harness:session-id> --selection-reason "highest-priority ready outcome; unblocks the next task"`. Its goal, acceptance, validation, and focused scope come from the task contract by default.
 4. Start the harness in that worktree. Use one worktree and one branch for each writer.
 5. Commit and run `continuity finalize` before `wt merge main` or opening a pull request.
 6. After the worker commit reaches the integration branch, run `continuity integrate --id T-001`, then remove the finished worktree.

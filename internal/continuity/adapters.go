@@ -1,33 +1,92 @@
 package continuity
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 )
 
 type InstallReport struct {
-	Created []string
-	Skipped []string
+	Created   []string
+	Updated   []string
+	Skipped   []string
+	Attention []string
 }
 
-// InstallAdapters creates only missing repository adapters. Existing instruction
-// files are never merged or overwritten because they may contain user-owned
-// policy that this tool cannot safely infer.
+// InstallAdapters creates missing repository adapters and appends a small,
+// marked bridge to existing plain-text instruction files. The bridge makes the
+// shared protocol discoverable without replacing or interpreting user-owned
+// instructions.
 func InstallAdapters(root string) (InstallReport, error) {
 	report := InstallReport{}
+	textFiles := map[string]struct {
+		template string
+		bridge   string
+	}{
+		"AGENTS.md":                       {agentsTemplate, agentsBridge},
+		"CLAUDE.md":                       {claudeTemplate, claudeBridge},
+		"GEMINI.md":                       {geminiTemplate, geminiBridge},
+		".github/copilot-instructions.md": {copilotTemplate, copilotBridge},
+	}
+	textPaths := make([]string, 0, len(textFiles))
+	for path := range textFiles {
+		textPaths = append(textPaths, path)
+	}
+	sort.Strings(textPaths)
+	for _, relative := range textPaths {
+		adapter := textFiles[relative]
+		result, err := installTextAdapter(filepath.Join(root, relative), adapter.template, adapter.bridge)
+		if err != nil {
+			return report, err
+		}
+		switch result {
+		case adapterCreated:
+			report.Created = append(report.Created, relative)
+		case adapterUpdated:
+			report.Updated = append(report.Updated, relative)
+		default:
+			report.Skipped = append(report.Skipped, relative)
+		}
+	}
+	structuredFiles := map[string]struct {
+		template string
+		merge    func(map[string]json.RawMessage) (bool, error)
+	}{
+		".codex/hooks.json": {codexHooksTemplate, mergeCodexHooks},
+		"opencode.json":     {openCodeTemplate, mergeOpenCodeInstructions},
+	}
+	structuredPaths := make([]string, 0, len(structuredFiles))
+	for path := range structuredFiles {
+		structuredPaths = append(structuredPaths, path)
+	}
+	sort.Strings(structuredPaths)
+	for _, relative := range structuredPaths {
+		adapter := structuredFiles[relative]
+		result, warning, err := installJSONAdapter(filepath.Join(root, relative), adapter.template, adapter.merge)
+		if err != nil {
+			return report, err
+		}
+		switch result {
+		case adapterCreated:
+			report.Created = append(report.Created, relative)
+		case adapterUpdated:
+			report.Updated = append(report.Updated, relative)
+		default:
+			report.Skipped = append(report.Skipped, relative)
+		}
+		if warning != "" {
+			report.Attention = append(report.Attention, relative+": "+warning)
+		}
+	}
+
 	files := map[string]string{
-		"AGENTS.md":                                  agentsTemplate,
-		"CLAUDE.md":                                  claudeTemplate,
-		"GEMINI.md":                                  geminiTemplate,
-		".github/copilot-instructions.md":            copilotTemplate,
-		".cursor/rules/project-continuity.mdc":       cursorTemplate,
-		".codex/hooks.json":                          codexHooksTemplate,
-		".codex/hooks/continuity.sh":                 codexHookScriptTemplate,
-		"opencode.json":                              openCodeTemplate,
-		".agents/skills/project-continuity/SKILL.md": skillTemplate,
+		".cursor/rules/project-continuity.mdc":                              cursorTemplate,
+		".codex/hooks/continuity.sh":                                        codexHookScriptTemplate,
+		".agents/skills/project-continuity/SKILL.md":                        skillTemplate,
 		".agents/skills/project-continuity/agents/openai.yaml":              skillMetadataTemplate,
 		".agents/skills/project-continuity/references/state-schema.md":      skillSchemaTemplate,
 		".agents/skills/project-continuity/references/plan-schema.md":       planSchemaTemplate,
@@ -80,6 +139,216 @@ func writeIfMissing(path, contents string) (bool, error) {
 	return true, nil
 }
 
+type adapterInstallResult int
+
+const (
+	adapterSkipped adapterInstallResult = iota
+	adapterCreated
+	adapterUpdated
+)
+
+const (
+	continuityBridgeStart = "<!-- continuity:begin -->"
+	continuityBridgeEnd   = "<!-- continuity:end -->"
+)
+
+func installTextAdapter(path, template, bridge string) (adapterInstallResult, error) {
+	info, err := os.Lstat(path)
+	if err == nil && (!info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0) {
+		return adapterSkipped, nil
+	}
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return adapterSkipped, err
+	}
+	contents, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		created, createErr := writeIfMissing(path, template)
+		if createErr != nil {
+			return adapterSkipped, createErr
+		}
+		if created {
+			return adapterCreated, nil
+		}
+		return adapterSkipped, nil
+	}
+	if err != nil {
+		return adapterSkipped, err
+	}
+	text := string(contents)
+	if strings.Contains(text, continuityBridgeStart) || adapterAlreadyReferencesContinuity(text) {
+		return adapterSkipped, nil
+	}
+	separator := "\n\n"
+	if text == "" || strings.HasSuffix(text, "\n\n") {
+		separator = ""
+	} else if strings.HasSuffix(text, "\n") {
+		separator = "\n"
+	}
+	addition := continuityBridgeStart + "\n" + strings.TrimSpace(bridge) + "\n" + continuityBridgeEnd + "\n"
+	if err := replaceFileAtomic(path, append(contents, []byte(separator+addition)...), info.Mode().Perm()); err != nil {
+		return adapterSkipped, err
+	}
+	return adapterUpdated, nil
+}
+
+func replaceFileAtomic(path string, contents []byte, mode os.FileMode) error {
+	directory := filepath.Dir(path)
+	file, err := os.CreateTemp(directory, ".continuity-adapter-*")
+	if err != nil {
+		return err
+	}
+	temporary := file.Name()
+	defer os.Remove(temporary)
+	if err := file.Chmod(mode); err != nil {
+		file.Close()
+		return err
+	}
+	if _, err := file.Write(contents); err != nil {
+		file.Close()
+		return err
+	}
+	if err := file.Sync(); err != nil {
+		file.Close()
+		return err
+	}
+	if err := file.Close(); err != nil {
+		return err
+	}
+	return os.Rename(temporary, path)
+}
+
+func adapterAlreadyReferencesContinuity(contents string) bool {
+	return strings.Contains(contents, "PROJECT_STATE.md") &&
+		(strings.Contains(contents, "continuity context") || strings.Contains(contents, "project-continuity"))
+}
+
+func installJSONAdapter(path, template string, merge func(map[string]json.RawMessage) (bool, error)) (adapterInstallResult, string, error) {
+	info, err := os.Lstat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		created, createErr := writeIfMissing(path, template)
+		if createErr != nil {
+			return adapterSkipped, "", createErr
+		}
+		if created {
+			return adapterCreated, "", nil
+		}
+		return adapterSkipped, "", nil
+	}
+	if err != nil {
+		return adapterSkipped, "", err
+	}
+	if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
+		return adapterSkipped, "preserved non-regular file; connect Continuity manually", nil
+	}
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		return adapterSkipped, "", err
+	}
+	document := map[string]json.RawMessage{}
+	if err := json.Unmarshal(contents, &document); err != nil {
+		return adapterSkipped, "preserved file because it is not strict JSON; connect Continuity manually", nil
+	}
+	if document == nil {
+		return adapterSkipped, "preserved file because its top level is not an object; connect Continuity manually", nil
+	}
+	changed, err := merge(document)
+	if err != nil {
+		return adapterSkipped, "preserved unsupported configuration: " + err.Error(), nil
+	}
+	if !changed {
+		return adapterSkipped, "", nil
+	}
+	updated, err := json.MarshalIndent(document, "", "  ")
+	if err != nil {
+		return adapterSkipped, "", err
+	}
+	updated = append(updated, '\n')
+	if err := replaceFileAtomic(path, updated, info.Mode().Perm()); err != nil {
+		return adapterSkipped, "", err
+	}
+	return adapterUpdated, "", nil
+}
+
+func mergeOpenCodeInstructions(document map[string]json.RawMessage) (bool, error) {
+	instructions := []string{}
+	if raw, exists := document["instructions"]; exists {
+		if err := json.Unmarshal(raw, &instructions); err != nil {
+			return false, errors.New("instructions is not a string array")
+		}
+	}
+	for _, instruction := range instructions {
+		if instruction == "AGENTS.md" {
+			return false, nil
+		}
+	}
+	instructions = append(instructions, "AGENTS.md")
+	raw, err := json.Marshal(instructions)
+	if err != nil {
+		return false, err
+	}
+	document["instructions"] = raw
+	return true, nil
+}
+
+func mergeCodexHooks(document map[string]json.RawMessage) (bool, error) {
+	desired := map[string]json.RawMessage{}
+	if err := json.Unmarshal([]byte(codexHooksTemplate), &desired); err != nil {
+		return false, err
+	}
+	desiredHooks := map[string]json.RawMessage{}
+	if err := json.Unmarshal(desired["hooks"], &desiredHooks); err != nil {
+		return false, err
+	}
+	existingHooks := map[string]json.RawMessage{}
+	if raw, exists := document["hooks"]; exists {
+		if err := json.Unmarshal(raw, &existingHooks); err != nil {
+			return false, errors.New("hooks is not an object")
+		}
+		if existingHooks == nil {
+			existingHooks = map[string]json.RawMessage{}
+		}
+	}
+	changed := false
+	for event, desiredRaw := range desiredHooks {
+		existingGroups := []json.RawMessage{}
+		if raw, exists := existingHooks[event]; exists {
+			if err := json.Unmarshal(raw, &existingGroups); err != nil {
+				return false, fmt.Errorf("hooks.%s is not an array", event)
+			}
+		}
+		connected := false
+		for _, group := range existingGroups {
+			if strings.Contains(string(group), "continuity.sh") {
+				connected = true
+				break
+			}
+		}
+		if connected {
+			continue
+		}
+		desiredGroups := []json.RawMessage{}
+		if err := json.Unmarshal(desiredRaw, &desiredGroups); err != nil {
+			return false, err
+		}
+		existingGroups = append(existingGroups, desiredGroups...)
+		raw, err := json.Marshal(existingGroups)
+		if err != nil {
+			return false, err
+		}
+		existingHooks[event] = raw
+		changed = true
+	}
+	if !changed {
+		return false, nil
+	}
+	raw, err := json.Marshal(existingHooks)
+	if err != nil {
+		return false, err
+	}
+	document["hooks"] = raw
+	return true, nil
+}
+
 func installClaudeSkillLink(root string, report *InstallReport) error {
 	path := filepath.Join(root, ".claude", "skills")
 	if _, err := os.Lstat(path); err == nil {
@@ -100,8 +369,28 @@ func installClaudeSkillLink(root string, report *InstallReport) error {
 }
 
 func (r InstallReport) String() string {
-	return fmt.Sprintf("created %d adapter(s), preserved %d existing file(s)", len(r.Created), len(r.Skipped))
+	summary := fmt.Sprintf("created %d adapter(s), connected %d existing adapter(s), preserved %d existing adapter(s)", len(r.Created), len(r.Updated), len(r.Skipped))
+	if len(r.Attention) > 0 {
+		summary += "; manual attention: " + strings.Join(r.Attention, "; ")
+	}
+	return summary
 }
+
+const agentsBridge = `## Project continuity
+
+Before non-trivial work, read and follow the repository's project-continuity skill. Use PROJECT_PLAN.md and PROJECT_STATE.md as the shared cross-harness authority, and run continuity context with this harness's stable worker identity before resuming or editing.`
+
+const claudeBridge = `## Project continuity
+
+Read and follow AGENTS.md before non-trivial work. PROJECT_STATE.md is the shared project authority; use the project-continuity skill or continuity context before resuming or editing.`
+
+const geminiBridge = `## Project continuity
+
+Read and follow AGENTS.md before non-trivial work. Use PROJECT_STATE.md and continuity context as durable cross-harness state rather than relying on chat memory.`
+
+const copilotBridge = `## Project continuity
+
+Follow AGENTS.md and use PROJECT_STATE.md as the durable project authority. Invoke the repository project-continuity skill or continuity context before non-trivial work.`
 
 const agentsTemplate = `# Continuity protocol
 
@@ -109,9 +398,9 @@ This repository uses a detailed committed PROJECT_PLAN.md, a bounded PROJECT_STA
 
 If PROJECT_PLAN.md is draft, inspect repository facts and interview the user one decision at a time where product judgment is needed. Record compact facts, sources, assumptions, and decision cards; never store raw chat. Do not claim implementation work until the user explicitly approves an active milestone through continuity plan approve --approved --milestone M-001. Product, priority, constraint, and milestone changes become explicit plan deltas.
 
-Before non-trivial work, use the project-continuity skill when available. Run continuity context --owner <harness:session-id> and continuity status; Codex may use --session as a convenience alias. Use an active claim's scope or --scope path/to/area to load only relevant Context Capsules. If another owner holds this worktree, do not edit, revert, or reinterpret its changes; work read-only, wait, or use a separate Git worktree. Codex child agents are read-only in their parent checkout; give a child writer a separate worktree and claim.
+Before non-trivial work, use the project-continuity skill when available. Run continuity context --owner <harness:session-id>; Codex may use --session as a convenience alias. This bounded restart index reports ownership, gates stale state, and names the highest-ranked approved next action; use status or ready only for deeper diagnostics. Use an active claim's scope or --scope path/to/area to load only relevant Context Capsules. If another owner holds this worktree, do not edit, revert, or reinterpret its changes; work read-only, wait, or use a separate Git worktree. Codex child agents are read-only in their parent checkout; give a child writer a separate worktree and claim.
 
-Before editing, run continuity ready and claim one explicit autonomous task with continuity start. Planned tasks must link to the active approved outcome and carry a focused scope plus validation command; start defaults those fields and requires an evidence-based --selection-reason. One worktree and one branch have one writer; claims reject duplicate tasks, shared branches, and overlapping scopes. From an unclaimed integration worktree, use continuity task add --approved for a user-specified task or continuity task add --derived --outcome O-001 --scope path --validates command --rationale text for a needed technical step wholly inside the active outcome. The derived route immediately commits the queue record; neither route authorizes product work. A stale Fact Card or open Blocker Card overlapping the task is an active gate: inspect its evidence and explicitly confirm or resolve it before retrying. Add executable policy checks only through continuity policy add --approved after explicit user approval; relevant checks run at finalize and a failure checkpoints rather than completes the claim. Checkpoint material progress or blockers. Commit and finalize with verification evidence, then merge/hand off and use continuity integrate to update PROJECT_STATE.md plus its generated PROJECT_HISTORY/changes record. Once every task linked to an active outcome is integrated, use continuity plan outcome complete --id O-001 --evidence 'verification: pass'; milestone activation archives completed outcome history before switching active context.
+Before editing, follow the context packet's approved next task and claim it with continuity start. Planned tasks must link to the active approved outcome and carry a focused scope plus validation command; start defaults those fields and requires an evidence-based --selection-reason. One worktree and one branch have one writer; claims reject duplicate tasks, shared branches, and overlapping scopes. From an unclaimed integration worktree, use continuity task add --approved for a user-specified task or continuity task add --derived --outcome O-001 --scope path --validates command --rationale text for a needed technical step wholly inside the active outcome. The derived route immediately commits the queue record; neither route authorizes product work. A stale Fact Card or open Blocker Card overlapping the task is an active gate: inspect its evidence and explicitly confirm or resolve it before retrying. Add executable policy checks only through continuity policy add --approved after explicit user approval; relevant checks run at finalize and a failure checkpoints rather than completes the claim. Checkpoint material progress or blockers. Commit and finalize with verification evidence, then merge/hand off and use continuity integrate to update PROJECT_STATE.md plus its generated PROJECT_HISTORY/changes record. Once every task linked to an active outcome is integrated, use continuity plan outcome complete --id O-001 --evidence 'verification: pass'; milestone activation archives completed outcome history before switching active context.
 
 Do not change product intent, approved outcomes, or approval boundaries without user direction. Do not invent product features. Stop for destructive actions, production changes, credentials, external spending, security uncertainty, unresolved product choices, repeated blockers, or unexplained failures.
 `
@@ -237,11 +526,11 @@ description: Resume, coordinate, perform, checkpoint, finalize, or integrate non
 
 # Project continuity
 
-Run continuity context --owner <harness:session-id> and continuity status; Codex may use --session as a convenience alias. Use --scope to select only relevant Context Capsules and active plan outcomes from the approximately 30k-token durable index. If another owner holds this worktree, do not edit or reinterpret its changes; work read-only, wait, or use a separate worktree. Codex child agents are read-only in their parent checkout; use a separate worktree and claim for a child writer. If state is stale, run continuity reconcile and inspect only listed changes plus mapped code, then sync durable facts.
+Run continuity context --owner <harness:session-id>; Codex may use --session as a convenience alias. This bounded restart index reports ownership, gates stale state, and names the highest-ranked approved next action; use status or ready only for deeper diagnostics. Use --scope to select only relevant Context Capsules and active plan outcomes from the approximately 30k-token durable index. If another owner holds this worktree, do not edit or reinterpret its changes; work read-only, wait, or use a separate worktree. Codex child agents are read-only in their parent checkout; use a separate worktree and claim for a child writer. If state is stale, run continuity reconcile and inspect only listed changes plus mapped code, then sync durable facts.
 
 When PROJECT_PLAN.md is draft, inspect repository facts and interview the user one decision at a time with a recommendation. Store compact facts, source references, assumptions, and decision cards rather than raw chat. Do not claim implementation work until the user explicitly approves the milestone with continuity plan approve --approved --milestone M-001. Treat later product, priority, constraint, and milestone changes as plan deltas.
 
-Before editing, run continuity ready and claim an approved autonomous task with continuity start. Planned tasks must link to the active approved outcome and carry a focused scope plus validation command; start defaults those fields and requires an evidence-based --selection-reason. One worktree and one branch have one writer; claims reject duplicate tasks, shared branches, and overlapping scopes. From an unclaimed integration worktree, use continuity task add --approved for a user-specified task or continuity task add --derived --outcome O-001 --scope path --validates command --rationale text for a needed technical step wholly inside the active outcome. The derived route immediately commits the queue record; neither route authorizes product work. Stale Fact Cards and open Blocker Cards block overlapping claims until an explicit evidence-backed confirmation or resolution. Add executable policy checks only with explicit user approval through continuity policy add --approved; relevant checks run at finalize and a failure checkpoints the claim. Worktrunk users may opt into .agents/worktrunk/wt.toml.example for new-worktree orientation. Commit, finalize with verification evidence, then merge/hand off and use continuity integrate before declaring the task durable. Integration writes a committed change archive, ages affected source-linked facts, and retains a short path-scoped capsule; once every task for an active outcome is integrated, record its evidence-backed completion with continuity plan outcome complete before activating a later milestone.
+Before editing, follow the context packet's approved next task and claim it with continuity start. Planned tasks must link to the active approved outcome and carry a focused scope plus validation command; start defaults those fields and requires an evidence-based --selection-reason. One worktree and one branch have one writer; claims reject duplicate tasks, shared branches, and overlapping scopes. From an unclaimed integration worktree, use continuity task add --approved for a user-specified task or continuity task add --derived --outcome O-001 --scope path --validates command --rationale text for a needed technical step wholly inside the active outcome. The derived route immediately commits the queue record; neither route authorizes product work. Stale Fact Cards and open Blocker Cards block overlapping claims until an explicit evidence-backed confirmation or resolution. Add executable policy checks only with explicit user approval through continuity policy add --approved; relevant checks run at finalize and a failure checkpoints the claim. Worktrunk users may opt into .agents/worktrunk/wt.toml.example for new-worktree orientation. Commit, finalize with verification evidence, then merge/hand off and use continuity integrate before declaring the task durable. Integration writes a committed change archive, ages affected source-linked facts, and retains a short path-scoped capsule; once every task for an active outcome is integrated, record its evidence-backed completion with continuity plan outcome complete before activating a later milestone.
 
 Do not replace code inspection with state prose, store raw chats or reasoning, change user-owned product direction, or invent features. Read references/state-schema.md when changing state structure or resolving ownership, freshness, or integration questions. Read references/governance-schema.md before adding a fact, blocker, or policy.
 `
@@ -315,7 +604,7 @@ Worktrunk manages branches and Git worktrees; Continuity supplies shared project
 
 Install continuity on PATH, review wt.toml.example, then copy it to .config/wt.toml if you want Worktrunk to show bounded orientation and live ownership in new worktrees. Open the harness in the new worktree before claiming work, then use its real owner ID. Claims remain explicit because they require that identity and a narrow code scope.
 
-Use one writer, worktree, and branch per task. In each new worktree: run continuity context, status, and continuity ready; claim an approved task with continuity start and an evidence-based --selection-reason, work and finalize, merge, then run continuity integrate from the integration checkout. A user-specified task can be added from an unclaimed integration worktree with continuity task add --approved. In an approved plan, continuity task add --derived --outcome O-001 --scope path --validates command --rationale text may add only a focused technical step inside that active outcome and commits it immediately; agents must not invent product work.
+Use one writer, worktree, and branch per task. In each new worktree: run continuity context and follow its approved next action; use status or ready only for deeper diagnostics. Claim with continuity start and the packet's evidence-based --selection-reason, work and finalize, merge, then run continuity integrate from the integration checkout. A user-specified task can be added from an unclaimed integration worktree with continuity task add --approved. In an approved plan, continuity task add --derived --outcome O-001 --scope path --validates command --rationale text may add only a focused technical step inside that active outcome and commits it immediately; agents must not invent product work.
 `
 
 const worktrunkConfigTemplate = `# Optional Continuity bridge for Worktrunk.

@@ -177,6 +177,7 @@ func contextCommand(args []string) error {
 		return err
 	}
 	contextOwner := contextOwnerFor(*owner, *session)
+	heartbeatOwnedClaim(root, contextOwner)
 	context, err := compactContext(root, contextOwner, *limit, requestedScopes)
 	if err != nil {
 		return err
@@ -214,6 +215,10 @@ func compactContext(root, owner string, limit int, requestedScopes []string) (st
 	if err != nil {
 		return "", err
 	}
+	var stateGate error
+	if current == nil {
+		stateGate = requireFreshState(root, state)
+	}
 	var builder strings.Builder
 	builder.WriteString("Continuity live coordination\n")
 	if owner != "" {
@@ -221,8 +226,12 @@ func compactContext(root, owner string, limit int, requestedScopes []string) (st
 		builder.WriteString(owner)
 		builder.WriteString("\n")
 	}
-	if current == nil {
-		builder.WriteString("This worktree has no active writer claim. Before any edit, run continuity start with this worker identity.\n")
+	if current == nil && stateGate != nil {
+		fmt.Fprintf(&builder, "STOP: durable state is not safe to claim: %s\n", stateGate)
+	} else if current == nil && owner == "" {
+		builder.WriteString("This worktree has no active writer claim. Establish this harness's stable worker identity before editing.\n")
+	} else if current == nil {
+		builder.WriteString("This worktree has no active writer claim.\n")
 	} else if current.Stale(time.Now().UTC()) {
 		fmt.Fprintf(&builder, "STOP: this worktree claim for %s owned by %s is stale. Inspect continuity status, then explicitly heartbeat it as the original owner or recover/release it before editing.\n", current.TaskID, current.Owner)
 	} else if owner == "" {
@@ -266,11 +275,23 @@ func compactContext(root, owner string, limit int, requestedScopes []string) (st
 			fmt.Fprintf(&builder, "- %s at %s\n", completion.TaskID, completion.Commit)
 		}
 	}
-	if candidates, err := readyCandidates(state, plan, claims); err != nil {
-		return "", fmt.Errorf("ready task contract: %w", err)
-	} else if len(candidates) > 0 {
-		candidate := candidates[0]
-		fmt.Fprintf(&builder, "Ready approved task: %s — %s | unblocks: %d\n", candidate.Task.ID, candidate.Task.Title, candidate.Unblocks)
+	if current == nil && stateGate == nil {
+		if candidates, err := readyCandidates(state, plan, claims); err != nil {
+			return "", fmt.Errorf("ready task contract: %w", err)
+		} else if len(candidates) > 0 {
+			candidate := candidates[0]
+			reason := contextSelectionReason(candidate)
+			fmt.Fprintf(&builder, "Next approved task: %s — %s | unblocks: %d\n", candidate.Task.ID, candidate.Task.Title, candidate.Unblocks)
+			if owner == "" {
+				fmt.Fprintf(&builder, "Immediate next action: claim %s after establishing a stable worker identity. Selection reason: %s\n", candidate.Task.ID, reason)
+			} else {
+				fmt.Fprintf(&builder, "Immediate next action: continuity start --id %s --owner %s --selection-reason %s\n", candidate.Task.ID, shellQuote(owner), shellQuote(reason))
+			}
+		} else if plan != nil && plan.Meta["status"] != "approved" {
+			builder.WriteString("Immediate next action: continue project intake; implementation waits for explicit milestone approval.\n")
+		} else {
+			builder.WriteString("Immediate next action: no autonomous approved work is ready; wait for user-approved scope or resolve the listed gate.\n")
+		}
 	}
 	builder.WriteString("Project intent: ")
 	builder.WriteString(singleLineSnippet(state.Section("Product Intent"), 420))
@@ -322,6 +343,21 @@ func compactContext(root, owner string, limit int, requestedScopes []string) (st
 	}
 	builder.WriteString("\nUse the durable state for decisions; use the live claim board for concurrent ownership.\n")
 	return boundText(builder.String(), limit), nil
+}
+
+func contextSelectionReason(candidate readyCandidate) string {
+	parts := []string{"It is the highest-ranked unclaimed autonomous task"}
+	if candidate.Outcome != nil {
+		parts = append(parts, fmt.Sprintf("for active outcome %s at priority %d", candidate.Outcome.ID, candidate.OutcomePriority))
+	}
+	if candidate.Unblocks > 0 {
+		parts = append(parts, fmt.Sprintf("and directly unblocks %d task(s)", candidate.Unblocks))
+	}
+	return strings.Join(parts, " ") + "."
+}
+
+func shellQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
 }
 
 // livePulse is intentionally much smaller than the SessionStart packet. It is
@@ -547,7 +583,7 @@ func codexHookCommand(args []string) error {
 	owner := ownerForSession(input.SessionID)
 	switch phase {
 	case "session-start", "subagent-start":
-		heartbeatOwnLiveClaim(root, owner)
+		heartbeatOwnedClaim(root, owner)
 		context, contextErr := compactContext(root, owner, 1800, nil)
 		if contextErr != nil {
 			context = "Continuity state could not be loaded: " + contextErr.Error()
@@ -559,7 +595,7 @@ func codexHookCommand(args []string) error {
 		}
 		return emitHookContext(event, context)
 	case "user-prompt":
-		heartbeatOwnLiveClaim(root, owner)
+		heartbeatOwnedClaim(root, owner)
 		pulse, pulseErr := livePulse(root, owner)
 		if pulseErr != nil {
 			pulse = "Continuity pulse unavailable: " + pulseErr.Error()
@@ -584,12 +620,15 @@ func codexHookCommand(args []string) error {
 	}
 }
 
-func heartbeatOwnLiveClaim(root, owner string) {
+// heartbeatOwnedClaim lets the same identified worker resume its unrecovered
+// claim after a long operation. If another worker recovered the stale claim,
+// the owner check prevents the old session from reviving it.
+func heartbeatOwnedClaim(root, owner string) {
 	if owner == "" {
 		return
 	}
 	claim, err := continuity.FindClaimForWorktree(root)
-	if err == nil && claim != nil && claim.Owner == owner && !claim.Stale(time.Now().UTC()) {
+	if err == nil && claim != nil && claim.Owner == owner {
 		_, _ = continuity.HeartbeatClaim(root, claim.TaskID, owner, root)
 	}
 }
@@ -688,9 +727,6 @@ func guardCodexWrite(root, owner string) error {
 	}
 	if claim.Owner != owner {
 		return fmt.Errorf("this worktree is claimed by %s for %s; do not edit it from session %s", claim.Owner, claim.TaskID, owner)
-	}
-	if claim.Stale(time.Now().UTC()) {
-		return fmt.Errorf("claim %s is stale; inspect continuity status and explicitly recover or release it before editing", claim.TaskID)
 	}
 	_, err = continuity.HeartbeatClaim(root, claim.TaskID, owner, root)
 	return err

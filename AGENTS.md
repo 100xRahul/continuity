@@ -19,7 +19,7 @@ Treat harness memory and chat history as disposable conveniences, not authority.
 ## Start or resume a session
 
 1. Use the `project-continuity` skill when available. In Codex, trust this repository's optional hooks once with `/hooks`; a trusted SessionStart hook injects a bounded live coordination snapshot automatically.
-2. Otherwise run `continuity context --owner <harness:session-id>` and `continuity status`. Codex may use `--session` as a convenience alias. Use the active claim's scope or `--scope path/to/area` to select only relevant Context Capsules; do not read the full index during routine startup.
+2. Otherwise run `continuity context --owner <harness:session-id>`. Codex may use `--session` as a convenience alias. This one bounded packet reports live ownership, gates stale state, and names the next approved action; use `status` or `ready` only for deeper diagnostics. Use the active claim's scope or `--scope path/to/area` to select only relevant Context Capsules; do not read the full index during routine startup.
 3. If another owner has a claim in this worktree, do not edit, revert, reinterpret, or “clean up” its changes. Work read-only, wait, or open a separate Git worktree.
 4. If state is stale, run `continuity reconcile`, inspect only the listed/mapped evidence, update durable facts, and run `continuity sync` before claiming new work. Sync automatically marks only affected source-linked Fact Cards stale; it never silently refreshes them.
 5. If context or `start` reports a stale Fact Card, review its named evidence and use `continuity fact confirm --id F-001 --evidence 'review result'` from an unclaimed integration checkout. If it reports an open Blocker Card, gather new evidence and resolve it before retrying overlapping work.
@@ -31,7 +31,7 @@ Treat harness memory and chat history as disposable conveniences, not authority.
 - Before any code edit, claim one explicit autonomous task. In an approved plan, use a task linked to the active outcome and run `continuity start --id T-001 --owner <harness:session-id> --selection-reason "evidence-based reason"`; its focused scope and validation default from the task contract. Codex may use `--session` as a convenience alias.
 - A claim is exclusive by task ID, worktree, and overlapping path scope. An omitted scope means the whole repository and intentionally prevents parallel work.
 - Different writers require different worktrees, different branches, different approved tasks, and non-overlapping scopes. The CLI rejects a second active writer claim on the same named branch. They must not directly edit the committed project index while working.
-- Use `continuity heartbeat` or a checkpoint after material progress. Release only your own claim; recover a stale claim explicitly after inspecting `continuity status`.
+- Session context and trusted Codex hooks renew an unrecovered claim only for its original owner. Use `continuity heartbeat` or a checkpoint after material progress in other harnesses. Release only your own claim; recover another owner's stale claim explicitly after inspecting `continuity status`.
 
 ## Evidence gates
 

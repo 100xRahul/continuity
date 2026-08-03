@@ -516,6 +516,98 @@ func TestCompactContextStaysBoundedForLargeSelectedCapsules(t *testing.T) {
 	}
 }
 
+func TestCompactContextNamesOneSafeRestartAction(t *testing.T) {
+	root := t.TempDir()
+	if _, err := continuity.EnsureGitRepo(root); err != nil {
+		t.Fatal(err)
+	}
+	fingerprint, err := continuity.Fingerprint(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := continuity.NewTemplate(filepath.Join(root, continuity.StateFilename), "Test", "Test restart guidance.", continuity.Snapshot(root), fingerprint)
+	if err := state.ReplaceSection("Ready Queue", "- [ ] T-001 | Resume approved work | depends: none | autonomous: yes | accepts: The work resumes safely."); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.Save(); err != nil {
+		t.Fatal(err)
+	}
+	context, err := compactContext(root, "claude:restart", 12_000, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(context, "Next approved task: T-001") || !strings.Contains(context, "Immediate next action: continuity start --id T-001") {
+		t.Fatalf("context did not provide one actionable restart path: %s", context)
+	}
+	if !strings.Contains(context, "highest-ranked unclaimed autonomous task") {
+		t.Fatalf("context omitted selection evidence: %s", context)
+	}
+}
+
+func TestShellQuoteMakesRestartIdentityLiteral(t *testing.T) {
+	quoted := shellQuote("harness:$(touch nope)'worker")
+	if quoted != `'harness:$(touch nope)'"'"'worker'` {
+		t.Fatalf("unsafe shell quote: %s", quoted)
+	}
+}
+
+func TestCompactContextDoesNotRecommendWorkFromStaleState(t *testing.T) {
+	root := t.TempDir()
+	if _, err := continuity.EnsureGitRepo(root); err != nil {
+		t.Fatal(err)
+	}
+	fingerprint, err := continuity.Fingerprint(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := continuity.NewTemplate(filepath.Join(root, continuity.StateFilename), "Test", "Test stale restart guidance.", continuity.Snapshot(root), fingerprint)
+	if err := state.ReplaceSection("Ready Queue", "- [ ] T-001 | Unsafe stale work | depends: none | autonomous: yes | accepts: Stale work is not suggested."); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.Save(); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "changed.go"), []byte("package changed\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	context, err := compactContext(root, "codex:stale", 12_000, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(context, "STOP: durable state is not safe to claim") {
+		t.Fatalf("context omitted stale-state gate: %s", context)
+	}
+	if strings.Contains(context, "Next approved task:") || strings.Contains(context, "continuity start --id T-001") {
+		t.Fatalf("context recommended work from stale state: %s", context)
+	}
+}
+
+func TestOwnedStaleClaimRenewsWithoutUserRecovery(t *testing.T) {
+	root := t.TempDir()
+	if _, err := continuity.EnsureGitRepo(root); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := continuity.ClaimTask(root, continuity.ClaimRequest{TaskID: "T-001", Owner: "codex:returning", Worktree: root, Scope: []string{"cmd"}, Lease: time.Nanosecond}); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(time.Millisecond)
+	claim, err := continuity.FindClaimForWorktree(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if claim == nil || !claim.Stale(time.Now().UTC()) {
+		t.Fatalf("test claim did not become stale: %#v", claim)
+	}
+	heartbeatOwnedClaim(root, "codex:returning")
+	claim, err = continuity.FindClaimForWorktree(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if claim == nil || claim.Stale(time.Now().UTC()) {
+		t.Fatalf("returning owner did not renew its unrecovered claim: %#v", claim)
+	}
+}
+
 func TestStartConcurrentProcessesHaveOneWinner(t *testing.T) {
 	root := t.TempDir()
 	if _, err := continuity.EnsureGitRepo(root); err != nil {
