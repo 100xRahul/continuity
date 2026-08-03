@@ -13,11 +13,128 @@ import (
 
 const (
 	maxActiveChangeCapsules = 3
+	maxActiveCompletedTasks = 12
+	maxActiveVerification   = 12
+	maxRecentChanges        = 12
 	maxCapsulePaths         = 8
 	maxCapsuleEvidence      = 3
 	maxArchivedPaths        = 256
 	maxArchivedEvidence     = 64
 )
+
+// compactDurableState keeps the operational index useful without destroying
+// history. Completed task contracts are recoverable from Git and committed
+// change archives; incomplete tasks and every dependency that still matters
+// remain in the active queue. Verification and change summaries are newest
+// first, so retaining their first distinct entries preserves current evidence.
+func compactDurableState(root string, state *continuity.State, pendingArchiveID string) error {
+	tasks, err := continuity.ParseTasks(state.Section("Ready Queue"))
+	if err != nil {
+		return err
+	}
+	plan, err := loadOptionalPlan(root)
+	if err != nil {
+		return err
+	}
+	incompleteOutcomes := map[string]bool{}
+	if plan != nil {
+		for _, outcome := range mustOutcomes(plan) {
+			if outcome.Status != "x" {
+				incompleteOutcomes[outcome.ID] = true
+			}
+		}
+	}
+	archiveBacked := map[string]bool{}
+	for _, task := range tasks {
+		if task.Status != "x" || incompleteOutcomes[task.Outcome] {
+			continue
+		}
+		if task.ID == pendingArchiveID {
+			archiveBacked[task.ID] = true
+			continue
+		}
+		_, statErr := os.Stat(filepath.Join(root, filepath.FromSlash(changeArchivePath(task.ID))))
+		switch {
+		case statErr == nil:
+			archiveBacked[task.ID] = true
+		case !os.IsNotExist(statErr):
+			return statErr
+		}
+	}
+	queue, err := compactReadyQueue(state.Section("Ready Queue"), maxActiveCompletedTasks, archiveBacked)
+	if err != nil {
+		return err
+	}
+	if err := state.ReplaceSection("Ready Queue", queue); err != nil {
+		return err
+	}
+	if err := state.ReplaceSection("Verification", compactRecentLines(state.Section("Verification"), maxActiveVerification)); err != nil {
+		return err
+	}
+	return state.ReplaceSection("Recent Material Changes", compactRecentLines(state.Section("Recent Material Changes"), maxRecentChanges))
+}
+
+func compactReadyQueue(content string, completedLimit int, archiveBacked map[string]bool) (string, error) {
+	tasks, err := continuity.ParseTasks(content)
+	if err != nil {
+		return "", err
+	}
+	if completedLimit < 0 {
+		completedLimit = 0
+	}
+	completed := 0
+	for _, task := range tasks {
+		if task.Status == "x" && archiveBacked[task.ID] {
+			completed++
+		}
+	}
+	removeCount := completed - completedLimit
+	if removeCount <= 0 {
+		return strings.TrimSpace(content), nil
+	}
+	removed := map[string]bool{}
+	kept := make([]continuity.Task, 0, len(tasks)-removeCount)
+	for _, task := range tasks {
+		if task.Status == "x" && archiveBacked[task.ID] && removeCount > 0 {
+			removed[task.ID] = true
+			removeCount--
+			continue
+		}
+		kept = append(kept, task)
+	}
+	lines := make([]string, 0, len(kept))
+	for _, task := range kept {
+		dependencies := task.DependsOn[:0]
+		for _, dependency := range task.DependsOn {
+			if !removed[dependency] {
+				dependencies = append(dependencies, dependency)
+			}
+		}
+		task.DependsOn = dependencies
+		lines = append(lines, continuity.RenderTask(task))
+	}
+	return strings.Join(lines, "\n"), nil
+}
+
+func compactRecentLines(content string, limit int) string {
+	if limit <= 0 {
+		return ""
+	}
+	seen := map[string]bool{}
+	lines := make([]string, 0, limit)
+	for _, raw := range strings.Split(strings.TrimSpace(content), "\n") {
+		line := strings.TrimSpace(raw)
+		if line == "" || seen[line] {
+			continue
+		}
+		seen[line] = true
+		lines = append(lines, line)
+		if len(lines) == limit {
+			break
+		}
+	}
+	return strings.Join(lines, "\n")
+}
 
 // changeRecord is the bounded handoff artifact derived at integration time.
 // It carries factual worker data only: a task contract, Git-backed changed

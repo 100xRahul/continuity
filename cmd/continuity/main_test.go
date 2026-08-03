@@ -252,6 +252,28 @@ func TestTaskAddBootstrapsApprovedWorkWithoutAClaim(t *testing.T) {
 	}
 }
 
+func TestTaskAddRejectsArchivedTaskIDReuse(t *testing.T) {
+	root := t.TempDir()
+	if _, err := continuity.EnsureGitRepo(root); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeHistoryFile(root, changeArchivePath("T-002"), "# Change T-002\n"); err != nil {
+		t.Fatal(err)
+	}
+	fingerprint, err := continuity.Fingerprint(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := continuity.NewTemplate(filepath.Join(root, continuity.StateFilename), "Test", "Reject archived IDs.", continuity.Snapshot(root), fingerprint)
+	if err := state.Save(); err != nil {
+		t.Fatal(err)
+	}
+	err = taskCommand([]string{"add", "--repo", root, "--id", "T-002", "--title", "Reuse old ID", "--accepts", "Must fail", "--approved"})
+	if err == nil || !strings.Contains(err.Error(), "committed change archive") {
+		t.Fatalf("archived task ID was reusable: %v", err)
+	}
+}
+
 func TestStartRejectsMultilineStateInjection(t *testing.T) {
 	root := t.TempDir()
 	if _, err := continuity.EnsureGitRepo(root); err != nil {
@@ -541,6 +563,63 @@ func TestCompactContextNamesOneSafeRestartAction(t *testing.T) {
 	}
 	if !strings.Contains(context, "highest-ranked unclaimed autonomous task") {
 		t.Fatalf("context omitted selection evidence: %s", context)
+	}
+}
+
+func TestCompactContextReportsGateInsteadOfRecommendingBlockedTask(t *testing.T) {
+	root := t.TempDir()
+	if _, err := continuity.EnsureGitRepo(root); err != nil {
+		t.Fatal(err)
+	}
+	fingerprint, err := continuity.Fingerprint(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := continuity.NewTemplate(filepath.Join(root, continuity.StateFilename), "Test", "Test gated restart guidance.", continuity.Snapshot(root), fingerprint)
+	if err := state.ReplaceSection("Ready Queue", "- [ ] T-001 | Resume approved work | depends: none | autonomous: yes | accepts: The work resumes safely."); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.ReplaceFactCards([]continuity.FactCard{{
+		Status:     "stale",
+		ID:         "F-001",
+		Source:     "D-001",
+		Paths:      []string{"service"},
+		VerifiedAt: time.Now().UTC(),
+		Evidence:   "Earlier service review.",
+		Summary:    "Service assumptions need review.",
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.Save(); err != nil {
+		t.Fatal(err)
+	}
+	context, err := compactContext(root, "codex:gated", 3_200, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(context, "STOP: approved work is gated: F-001") || !strings.Contains(context, "continuity fact confirm --id F-001") {
+		t.Fatalf("context omitted the exact stale-fact recovery action: %s", context)
+	}
+	if strings.Contains(context, "Next approved task:") || strings.Contains(context, "continuity start --id T-001") {
+		t.Fatalf("context recommended blocked work: %s", context)
+	}
+}
+
+func TestAssembleContextPacketPreservesWholeSafetyBlock(t *testing.T) {
+	critical := "owner: codex:test\nSTOP: resolve F-001\nImmediate next action: confirm F-001\n"
+	sections := []contextPacketSection{{full: strings.Repeat("optional detail ", 200)}}
+	packet, err := assembleContextPacket(220, critical, sections)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(packet, critical) || len(packet) > 220 {
+		t.Fatalf("safety block was altered or packet exceeded its limit: %q", packet)
+	}
+	if strings.Contains(packet, "optional det") {
+		t.Fatalf("optional section was byte-truncated into the packet: %q", packet)
+	}
+	if _, err := assembleContextPacket(len(critical)-1, critical, nil); err == nil || !strings.Contains(err.Error(), "too small") {
+		t.Fatalf("unsafe limit did not fail explicitly: %v", err)
 	}
 }
 

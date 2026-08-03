@@ -44,6 +44,25 @@ func TestCrossHarnessAdaptersPointToSharedProtocol(t *testing.T) {
 	}
 }
 
+func TestAgentsAdapterStaysACompactBootloader(t *testing.T) {
+	root := moduleRoot(t)
+	contents, err := os.ReadFile(filepath.Join(root, "AGENTS.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(contents) > 3_000 {
+		t.Fatalf("AGENTS.md grew into a duplicate manual: %d bytes", len(contents))
+	}
+	if len(agentsTemplate) > 2_000 {
+		t.Fatalf("fresh-repository AGENTS template grew into a duplicate manual: %d bytes", len(agentsTemplate))
+	}
+	for _, required := range []string{"PROJECT_PLAN.md", "PROJECT_STATE.md", "continuity context", "continuity start", "one writer", "project-continuity/SKILL.md"} {
+		if !strings.Contains(string(contents), required) || !strings.Contains(agentsTemplate, required) {
+			t.Fatalf("compact bootloader omitted %q", required)
+		}
+	}
+}
+
 func TestInstallAdaptersConnectsExistingInstructionsWithoutOverwriting(t *testing.T) {
 	root := t.TempDir()
 	existingText := map[string]string{

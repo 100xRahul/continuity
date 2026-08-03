@@ -73,13 +73,13 @@ new session
 
 The repository includes optional Codex hooks:
 
-- `SessionStart` and `SubagentStart` inject a bounded live context packet: active claims, the current worktree owner, relevant project intent, constraints, and the next safe action.
+- `SessionStart` and `SubagentStart` inject a bounded live context packet. Ownership, stale-state/fact/blocker gates, constraints, and the exact next action form an indivisible safety block; only descriptive plan and capsule detail may be condensed or omitted.
 - `UserPromptSubmit` emits a very small live pulse before a later prompt, so an already-open session notices a newly claimed checkout without repeatedly receiving the full index.
 - `PreToolUse` protects both Codex's `apply_patch` path and potentially mutating Bash commands. A second session may still use a small read-only inspection set, but it cannot write, revert, build into the checkout, or run an arbitrary shell command until it owns the worktree claim.
 
 Trust the project-local hooks once with `/hooks`. Hooks are a convenience and guardrail, not the authority: the portable CLI and claim store remain the source of truth. They cover Codex's documented Bash and patch tool paths, but no hook should be treated as a complete sandbox against manual or external-process writes.
 
-If hooks are unavailable, run `continuity context` at the start of every session. It is the single bounded restart index: it reports ownership, refuses to recommend a claim from stale state, and prints the highest-ranked approved next action. `continuity status` and `continuity ready` remain available for deeper diagnostics. A returning owner also renews its own unrecovered claim, so a long unattended operation does not require manual lease recovery; it can never revive a claim another worker has already recovered.
+If hooks are unavailable, run `continuity context` at the start of every session. It is the single bounded restart index: it reports ownership, refuses to recommend work blocked by stale state, a stale fact, or an open Blocker Card, and prints the highest-ranked safe approved action. If the byte limit cannot hold that safety block, the command fails and asks for a larger limit instead of truncating an instruction. `continuity status` and `continuity ready` remain available for deeper diagnostics. A returning owner also renews its own unrecovered claim, so a long unattended operation does not require manual lease recovery; it can never revive a claim another worker has already recovered.
 
 ## Commands
 
@@ -151,7 +151,9 @@ Details: Load this only for authentication work; keep the precise invariants and
 
 `continuity context --scope internal/auth --limit 12000` selects the matching capsule plus project-wide orientation. When a worker has a live claim, its claim scope is selected automatically. An ordinary startup packet remains small; use a larger `--limit` only when the task needs deeper durable context. `continuity brief` intentionally prints the whole index and should be used for deliberate review, not routine startup.
 
-Integration keeps only the three newest generated `Change T-*` capsules in the active index. Each one carries intent, changed paths, validation evidence, next work, and a link to its full committed archive. A later agent working in a matching path sees the short record without rereading the previous code; older records remain available under `PROJECT_HISTORY/changes/` on demand. Once all outcome-linked tasks are integrated, `continuity plan outcome complete` writes `PROJECT_HISTORY/outcomes/O-001.md`; activating the next milestone similarly preserves `PROJECT_HISTORY/milestones/M-001.md` before changing active context.
+Integration compacts the operational index deterministically. It keeps every unfinished task, completed tasks still needed to verify an incomplete outcome, unarchived legacy contracts, and the newest 12 archive-backed completed task contracts. It removes dependencies only when their completed contract has moved out of the active window, and retains the newest 12 distinct verification and material-change lines. Git and committed `PROJECT_HISTORY/` records remain the historical authority; archived task IDs cannot be reused, and product decisions or failure records are never guessed obsolete or automatically deleted.
+
+Integration also keeps only the three newest generated `Change T-*` capsules in the active index. Each one carries intent, changed paths, validation evidence, next work, and a link to its full committed archive. A later agent working in a matching path sees the short record without rereading the previous code; older records remain available under `PROJECT_HISTORY/changes/` on demand. Once all outcome-linked tasks are integrated, `continuity plan outcome complete` writes `PROJECT_HISTORY/outcomes/O-001.md`; activating the next milestone similarly preserves `PROJECT_HISTORY/milestones/M-001.md` before changing active context.
 
 The source fingerprint uses Git's tracked and unignored files. It does not hash `.git` worktree metadata, ignored build binaries, generated harness adapters, or the target of an external symlink. A matching fingerprint avoids broad rescans; evidence anchors still tell an agent which small areas need review.
 
@@ -169,7 +171,7 @@ The compact on-disk syntax and ownership rules are in [the governance schema](.a
 
 ## Harness support
 
-The portable layer is `PROJECT_STATE.md`, `AGENTS.md`, `.agents/skills/project-continuity`, and the CLI. Repository adapters point Codex, Claude Code, Cursor, GitHub Copilot CLI, Gemini CLI, and OpenCode to that same protocol. Use `--owner harness:session-id` with the CLI outside Codex; `--session` is only a Codex convenience alias.
+The portable layer is `PROJECT_STATE.md`, the compact `AGENTS.md` bootloader, `.agents/skills/project-continuity`, and the CLI. The bootloader preserves only discovery, ownership, lifecycle, and safety invariants; the skill is the single detailed workflow. Repository adapters point Codex, Claude Code, Cursor, GitHub Copilot CLI, Gemini CLI, and OpenCode to that same protocol. Use `--owner harness:session-id` with the CLI outside Codex; `--session` is only a Codex convenience alias.
 
 The live claim/heartbeat feature currently targets same-machine local Git worktrees. Codex hooks are the first native accelerator because they can automatically inject coordination context and guard Codex write paths; the core CLI itself stays harness-neutral.
 

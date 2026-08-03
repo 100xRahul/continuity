@@ -186,6 +186,11 @@ func contextCommand(args []string) error {
 	return nil
 }
 
+type contextPacketSection struct {
+	full     string
+	fallback string
+}
+
 func compactContext(root, owner string, limit int, requestedScopes []string) (string, error) {
 	if limit <= 0 {
 		return "", errors.New("context limit must be positive")
@@ -219,38 +224,47 @@ func compactContext(root, owner string, limit int, requestedScopes []string) (st
 	if current == nil {
 		stateGate = requireFreshState(root, state)
 	}
-	var builder strings.Builder
-	builder.WriteString("Continuity live coordination\n")
+	selectionScopes := requestedScopes
+	if len(selectionScopes) == 0 && current != nil {
+		selectionScopes = current.Scope
+	}
+	sections := []contextPacketSection{}
+	var critical strings.Builder
+	critical.WriteString("Continuity live coordination\n")
 	if owner != "" {
-		builder.WriteString("Your worker identity: ")
-		builder.WriteString(owner)
-		builder.WriteString("\n")
+		critical.WriteString("Your worker identity: ")
+		critical.WriteString(singleLineSnippet(owner, 120))
+		critical.WriteString("\n")
 	}
 	if current == nil && stateGate != nil {
-		fmt.Fprintf(&builder, "STOP: durable state is not safe to claim: %s\n", stateGate)
+		fmt.Fprintf(&critical, "STOP: durable state is not safe to claim: %s\n", singleLineSnippet(stateGate.Error(), 600))
 	} else if current == nil && owner == "" {
-		builder.WriteString("This worktree has no active writer claim. Establish this harness's stable worker identity before editing.\n")
+		critical.WriteString("This worktree has no active writer claim. Establish this harness's stable worker identity before editing.\n")
 	} else if current == nil {
-		builder.WriteString("This worktree has no active writer claim.\n")
+		critical.WriteString("This worktree has no active writer claim.\n")
 	} else if current.Stale(time.Now().UTC()) {
-		fmt.Fprintf(&builder, "STOP: this worktree claim for %s owned by %s is stale. Inspect continuity status, then explicitly heartbeat it as the original owner or recover/release it before editing.\n", current.TaskID, current.Owner)
+		fmt.Fprintf(&critical, "STOP: this worktree claim for %s owned by %s is stale. Inspect continuity status, then explicitly heartbeat it as the original owner or recover/release it before editing.\n", singleLineSnippet(current.TaskID, 80), singleLineSnippet(current.Owner, 120))
 	} else if owner == "" {
-		fmt.Fprintf(&builder, "STOP: this worktree is claimed by %s for %s, but this session has no worker identity. Do not edit until it identifies itself and owns a claim.\n", current.Owner, current.TaskID)
+		fmt.Fprintf(&critical, "STOP: this worktree is claimed by %s for %s, but this session has no worker identity. Do not edit until it identifies itself and owns a claim.\n", singleLineSnippet(current.Owner, 120), singleLineSnippet(current.TaskID, 80))
 	} else if current.Owner != owner {
-		fmt.Fprintf(&builder, "STOP: this worktree is claimed by %s for %s. Do not edit or overwrite its changes.\n", current.Owner, current.TaskID)
+		fmt.Fprintf(&critical, "STOP: this worktree is claimed by %s for %s. Do not edit or overwrite its changes.\n", singleLineSnippet(current.Owner, 120), singleLineSnippet(current.TaskID, 80))
 	} else {
-		fmt.Fprintf(&builder, "Your active claim: %s | scope: %s\n", current.TaskID, strings.Join(current.Scope, ","))
+		fmt.Fprintf(&critical, "Your active claim: %s | scope: %s\n", singleLineSnippet(current.TaskID, 80), singleLineSnippet(strings.Join(current.Scope, ","), 220))
+		var claimDetail strings.Builder
 		if current.Goal != "" {
-			fmt.Fprintf(&builder, "Goal: %s\n", current.Goal)
+			fmt.Fprintf(&claimDetail, "Goal: %s\n", singleLineSnippet(current.Goal, 280))
 		}
 		if current.NextAction != "" {
-			fmt.Fprintf(&builder, "Next action: %s\n", current.NextAction)
+			fmt.Fprintf(&critical, "Next action: %s\n", singleLineSnippet(current.NextAction, 280))
 		}
 		if current.SelectionReason != "" {
-			fmt.Fprintf(&builder, "Selection reason: %s\n", current.SelectionReason)
+			fmt.Fprintf(&claimDetail, "Selection reason: %s\n", singleLineSnippet(current.SelectionReason, 260))
 		}
 		if current.Risk != "" && current.Risk != "none" {
-			fmt.Fprintf(&builder, "Risk: %s\n", current.Risk)
+			fmt.Fprintf(&critical, "Risk: %s\n", singleLineSnippet(current.Risk, 180))
+		}
+		if claimDetail.Len() > 0 {
+			sections = append(sections, contextPacketSection{full: claimDetail.String()})
 		}
 	}
 	otherClaims := make([]continuity.Claim, 0, len(claims))
@@ -260,89 +274,230 @@ func compactContext(root, owner string, limit int, requestedScopes []string) (st
 		}
 	}
 	if len(otherClaims) > 0 {
-		builder.WriteString("Other active work:\n")
+		var other strings.Builder
+		other.WriteString("Other active work:\n")
 		for _, claim := range otherClaims {
 			branch := claim.Branch
 			if branch == "" {
 				branch = "detached/unknown"
 			}
-			fmt.Fprintf(&builder, "- %s owned by %s on %s; scope %s\n", claim.TaskID, claim.Owner, branch, strings.Join(claim.Scope, ","))
+			fmt.Fprintf(&other, "- %s owned by %s on %s; scope %s\n", claim.TaskID, singleLineSnippet(claim.Owner, 120), branch, singleLineSnippet(strings.Join(claim.Scope, ","), 180))
 		}
+		sections = append(sections, contextPacketSection{full: other.String()})
 	}
 	if len(completions) > 0 {
-		builder.WriteString("Completed work awaiting merge/integration:\n")
+		var pending strings.Builder
+		pending.WriteString("Completed work awaiting merge/integration:\n")
 		for _, completion := range completions {
-			fmt.Fprintf(&builder, "- %s at %s\n", completion.TaskID, completion.Commit)
+			fmt.Fprintf(&pending, "- %s at %s\n", completion.TaskID, completion.Commit)
 		}
+		sections = append(sections, contextPacketSection{full: pending.String()})
 	}
 	if current == nil && stateGate == nil {
 		if candidates, err := readyCandidates(state, plan, claims); err != nil {
 			return "", fmt.Errorf("ready task contract: %w", err)
 		} else if len(candidates) > 0 {
-			candidate := candidates[0]
-			reason := contextSelectionReason(candidate)
-			fmt.Fprintf(&builder, "Next approved task: %s — %s | unblocks: %d\n", candidate.Task.ID, candidate.Task.Title, candidate.Unblocks)
-			if owner == "" {
-				fmt.Fprintf(&builder, "Immediate next action: claim %s after establishing a stable worker identity. Selection reason: %s\n", candidate.Task.ID, reason)
-			} else {
-				fmt.Fprintf(&builder, "Immediate next action: continuity start --id %s --owner %s --selection-reason %s\n", candidate.Task.ID, shellQuote(owner), shellQuote(reason))
+			candidates = contextCandidatesForScopes(candidates, requestedScopes)
+			candidate, blocked, err := nextActionableCandidate(state, candidates)
+			if err != nil {
+				return "", fmt.Errorf("ready task gate: %w", err)
+			}
+			switch {
+			case candidate != nil:
+				if len(requestedScopes) == 0 {
+					selectionScopes = candidate.Task.Scope
+					if len(selectionScopes) == 0 {
+						selectionScopes = []string{"."}
+					}
+				}
+				reason := contextSelectionReason(*candidate)
+				fmt.Fprintf(&critical, "Next approved task: %s — %s | unblocks: %d\n", candidate.Task.ID, singleLineSnippet(candidate.Task.Title, 220), candidate.Unblocks)
+				if owner == "" {
+					fmt.Fprintf(&critical, "Immediate next action: claim %s after establishing a stable worker identity. Selection reason: %s\n", candidate.Task.ID, reason)
+				} else {
+					fmt.Fprintf(&critical, "Immediate next action: continuity start --id %s --owner %s --selection-reason %s\n", candidate.Task.ID, shellQuote(owner), shellQuote(reason))
+				}
+			case blocked != nil:
+				fmt.Fprintf(&critical, "STOP: approved work is gated: %s\n", singleLineSnippet(blocked.Summary, 360))
+				fmt.Fprintf(&critical, "Immediate next action: %s\n", singleLineSnippet(blocked.Action, 520))
+			default:
+				critical.WriteString("Immediate next action: no autonomous approved work matches this context scope.\n")
 			}
 		} else if plan != nil && plan.Meta["status"] != "approved" {
-			builder.WriteString("Immediate next action: continue project intake; implementation waits for explicit milestone approval.\n")
+			critical.WriteString("Immediate next action: continue project intake; implementation waits for explicit milestone approval.\n")
 		} else {
-			builder.WriteString("Immediate next action: no autonomous approved work is ready; wait for user-approved scope or resolve the listed gate.\n")
+			critical.WriteString("Immediate next action: no autonomous approved work is ready; wait for user-approved scope or resolve the listed gate.\n")
 		}
 	}
-	builder.WriteString("Project intent: ")
-	builder.WriteString(singleLineSnippet(state.Section("Product Intent"), 420))
-	builder.WriteString("\nConstraints: ")
-	builder.WriteString(singleLineSnippet(state.Section("Constraints and Approval Boundaries"), 700))
-	selectionScopes := requestedScopes
-	if len(selectionScopes) == 0 && current != nil {
-		selectionScopes = current.Scope
-	}
+	critical.WriteString("Constraints: ")
+	critical.WriteString(singleLineSnippet(state.Section("Constraints and Approval Boundaries"), 320))
+	critical.WriteByte('\n')
+	sections = append(sections, contextPacketSection{full: "Project intent: " + singleLineSnippet(state.Section("Product Intent"), 420) + "\n"})
 	if plan != nil {
-		builder.WriteString("\n")
-		builder.WriteString(renderPlanContext(plan, selectionScopes))
+		sections = append(sections, contextPacketSection{full: "\n" + renderPlanContext(plan, selectionScopes)})
 	}
 	if facts, factErr := state.FactCards(); factErr != nil {
 		return "", fmt.Errorf("read Fact Cards: %w", factErr)
 	} else if stale := continuity.StaleFactCardsForScopes(facts, selectionScopes); len(stale) > 0 {
-		builder.WriteString("\nStale source-linked facts:\n")
-		for _, fact := range stale {
-			fmt.Fprintf(&builder, "- %s | source: %s | paths: %s | confirm with new review evidence before overlapping work\n", fact.ID, fact.Source, strings.Join(fact.Paths, ","))
+		fmt.Fprintf(&critical, "Stale fact gate(s): %s.\n", factCardIDs(stale, 5))
+		if current != nil {
+			critical.WriteString("STOP: checkpoint and release the claim, inspect continuity fact status from the integration checkout, and confirm each reviewed fact before reclaiming.\n")
 		}
 	}
 	if blockers, blockerErr := state.BlockerCards(); blockerErr != nil {
 		return "", fmt.Errorf("read Blocker Cards: %w", blockerErr)
 	} else if open := continuity.OpenBlockerCardsForScopes(blockers, selectionScopes); len(open) > 0 {
-		builder.WriteString("\nOpen durable blockers:\n")
-		for _, blocker := range open {
-			fmt.Fprintf(&builder, "- %s | task: %s | hypothesis: %s | next: %s\n", blocker.ID, blocker.TaskID, blocker.Hypothesis, blocker.NextAction)
+		fmt.Fprintf(&critical, "Open blocker gate(s): %s.\n", blockerCardIDs(open, 5))
+		if current != nil {
+			critical.WriteString("STOP: checkpoint and release the claim, gather the blocker card's required new evidence, and resolve it before reclaiming.\n")
 		}
 	}
 	if policies, policyErr := loadOptionalPolicyDocument(root); policyErr != nil {
 		return "", fmt.Errorf("load policy checks: %w", policyErr)
 	} else if policies != nil {
 		if relevant := continuity.PoliciesForScopes(policies.Policies, selectionScopes, "finalize"); len(relevant) > 0 {
-			builder.WriteString("\nRelevant finalization policy checks:\n")
-			for _, policy := range relevant {
-				fmt.Fprintf(&builder, "- %s | scope: %s | %s\n", policy.ID, strings.Join(policy.Scope, ","), policy.Reason)
+			var policySection strings.Builder
+			policySection.WriteString("Relevant finalization policy checks:\n")
+			for _, entry := range relevant {
+				fmt.Fprintf(&policySection, "- %s | scope: %s | %s\n", entry.ID, strings.Join(entry.Scope, ","), singleLineSnippet(entry.Reason, 220))
 			}
+			sections = append(sections, contextPacketSection{full: policySection.String()})
 		}
 	}
 	capsules, capsuleErr := state.ContextCapsules()
 	if capsuleErr != nil {
 		return "", fmt.Errorf("read Context Capsules: %w", capsuleErr)
 	}
-	if selected := continuity.SelectContextCapsules(capsules, selectionScopes); len(selected) > 0 {
-		builder.WriteString("\nSelected durable context capsules:\n")
+	if selected := prioritizeContextCapsules(continuity.SelectContextCapsules(capsules, selectionScopes)); len(selected) > 0 {
+		const capsuleHeader = "Selected durable context capsules:\n"
+		sections = append(sections, contextPacketSection{full: capsuleHeader, fallback: capsuleHeader})
 		for _, capsule := range selected {
-			builder.WriteString(capsule.Render())
+			fallback := fmt.Sprintf("Context capsule: %s\nPaths: %s\nSummary: %s\n", singleLineSnippet(capsule.Name, 100), singleLineSnippet(strings.Join(capsule.Paths, ","), 220), singleLineSnippet(capsule.Summary, 320))
+			sections = append(sections, contextPacketSection{full: capsule.Render(), fallback: fallback})
 		}
 	}
-	builder.WriteString("\nUse the durable state for decisions; use the live claim board for concurrent ownership.\n")
-	return boundText(builder.String(), limit), nil
+	sections = append(sections, contextPacketSection{full: "Use the durable state for decisions; use the live claim board for concurrent ownership.\n"})
+	return assembleContextPacket(limit, critical.String(), sections)
+}
+
+func prioritizeContextCapsules(capsules []continuity.ContextCapsule) []continuity.ContextCapsule {
+	projectWide := []continuity.ContextCapsule{}
+	scoped := []continuity.ContextCapsule{}
+	changes := []continuity.ContextCapsule{}
+	for _, capsule := range capsules {
+		if len(capsule.Paths) == 1 && capsule.Paths[0] == "." {
+			projectWide = append(projectWide, capsule)
+		} else if strings.HasPrefix(capsule.Name, "Change T-") {
+			changes = append(changes, capsule)
+		} else {
+			scoped = append(scoped, capsule)
+		}
+	}
+	for left, right := 0, len(changes)-1; left < right; left, right = left+1, right-1 {
+		changes[left], changes[right] = changes[right], changes[left]
+	}
+	result := make([]continuity.ContextCapsule, 0, len(capsules))
+	result = append(result, projectWide...)
+	result = append(result, scoped...)
+	return append(result, changes...)
+}
+
+func factCardIDs(cards []continuity.FactCard, limit int) string {
+	ids := make([]string, 0, len(cards))
+	for index, card := range cards {
+		if index == limit {
+			ids = append(ids, fmt.Sprintf("+%d more", len(cards)-index))
+			break
+		}
+		ids = append(ids, singleLineSnippet(card.ID, 60))
+	}
+	return strings.Join(ids, ", ")
+}
+
+func blockerCardIDs(cards []continuity.BlockerCard, limit int) string {
+	ids := make([]string, 0, len(cards))
+	for index, card := range cards {
+		if index == limit {
+			ids = append(ids, fmt.Sprintf("+%d more", len(cards)-index))
+			break
+		}
+		ids = append(ids, singleLineSnippet(card.ID, 60))
+	}
+	return strings.Join(ids, ", ")
+}
+
+func contextCandidatesForScopes(candidates []readyCandidate, scopes []string) []readyCandidate {
+	if len(scopes) == 0 {
+		return candidates
+	}
+	filtered := make([]readyCandidate, 0, len(candidates))
+	for _, candidate := range candidates {
+		taskScopes := candidate.Task.Scope
+		if len(taskScopes) == 0 {
+			taskScopes = []string{"."}
+		}
+		if contextPathsOverlap(taskScopes, scopes) {
+			filtered = append(filtered, candidate)
+		}
+	}
+	return filtered
+}
+
+func contextPathsOverlap(left, right []string) bool {
+	for _, first := range left {
+		first = filepath.ToSlash(filepath.Clean(first))
+		for _, second := range right {
+			second = filepath.ToSlash(filepath.Clean(second))
+			if first == "." || second == "." || first == second || strings.HasPrefix(first, second+"/") || strings.HasPrefix(second, first+"/") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func assembleContextPacket(limit int, critical string, sections []contextPacketSection) (string, error) {
+	if len(critical) > limit {
+		return "", fmt.Errorf("context limit %d is too small for the %d-byte safety packet; increase --limit", limit, len(critical))
+	}
+	const noticeReserve = 112
+	sectionLimit := limit
+	if limit-len(critical) > noticeReserve {
+		sectionLimit -= noticeReserve
+	}
+	var builder strings.Builder
+	builder.WriteString(critical)
+	fallbackSuffix := make([]int, len(sections)+1)
+	for index := len(sections) - 1; index >= 0; index-- {
+		fallbackSuffix[index] = fallbackSuffix[index+1]
+		if sections[index].fallback != "" {
+			fallbackSuffix[index] += len(sections[index].fallback)
+		}
+	}
+	omitted := 0
+	condensed := 0
+	for index, section := range sections {
+		if section.full == "" {
+			continue
+		}
+		if builder.Len()+len(section.full)+fallbackSuffix[index+1] <= sectionLimit {
+			builder.WriteString(section.full)
+			continue
+		}
+		if section.fallback != "" && builder.Len()+len(section.fallback) <= sectionLimit {
+			builder.WriteString(section.fallback)
+			condensed++
+			continue
+		}
+		omitted++
+	}
+	if omitted > 0 || condensed > 0 {
+		notice := fmt.Sprintf("Context budget: %d section(s) omitted, %d capsule detail block(s) condensed; rerun with a larger --limit only if needed.\n", omitted, condensed)
+		if builder.Len()+len(notice) <= limit {
+			builder.WriteString(notice)
+		}
+	}
+	return builder.String(), nil
 }
 
 func contextSelectionReason(candidate readyCandidate) string {
@@ -509,6 +664,9 @@ func integrateCommand(args []string) error {
 		}
 		if _, err := state.AgeFactCards(record.Paths); err != nil {
 			return err
+		}
+		if err := compactDurableState(root, state, *id); err != nil {
+			return fmt.Errorf("compact durable state: %w", err)
 		}
 		next, err := selectNextWork(root, state)
 		if err != nil {

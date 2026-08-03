@@ -31,6 +31,8 @@ Details: Compact durable details, invariants, decisions, and references for this
 
 Paths must be repository-relative. `Paths: .` is project-wide orientation. `continuity context --scope path/to/module` selects matching capsules; an active claim's scope is selected automatically. Do not use capsules for raw chats, reasoning traces, or pasted source code.
 
+The context packet is priority-structured rather than byte-truncated. Ownership, state/fact/blocker gates, constraints, and the exact next action must fit as one safety block or `continuity context` returns an explicit limit error. Plan projection and capsule detail are optional blocks and may be condensed or omitted whole. A gated ready task is reported with its recovery action and is never printed as claimable.
+
 ## Task queue syntax
 
 Legacy repositories use one compact line per task:
@@ -56,6 +58,8 @@ For sessions on one machine, the CLI stores claims, heartbeats, and pending comp
 A claim contains task ID, owner/session identity, worktree, branch, base commit, scope, goal, next action, selection reason, and lease. A claim is exclusive by task, worktree, and overlapping scope. A completion retains that task contract plus a verified commit until `continuity integrate` confirms that commit is in the integration checkout.
 
 Integration derives changed paths from the recorded base commit through the verified result commit. It writes a permanent `PROJECT_HISTORY/changes/T-001.md` record and refreshes a generated `Change T-001` capsule with intent, changed paths, validation evidence, next work, and the archive path. Preserve only the newest three generated change capsules in the active index; archives remain committed and on-demand.
+
+Integration also compacts archive-backed repetition in the operational index: preserve every unfinished task, completed tasks linked to incomplete outcomes, unarchived legacy contracts, and the newest 12 archive-backed completed task contracts, plus the newest 12 distinct lines in `Verification` and `Recent Material Changes`. When an older completed task leaves the active queue, remove its already-satisfied dependency edge from retained tasks. Git and `PROJECT_HISTORY/` preserve full history, and an archived task ID cannot be reused. Never infer that an engineering decision, failure, Fact Card, or Blocker Card is obsolete; those require their explicit lifecycle.
 
 ## Ownership
 

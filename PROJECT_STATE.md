@@ -2,10 +2,10 @@
 schema: 2
 fingerprint: sha256:77a88399dd78ae1a9ab963d7431666f0e5e02d6732dec2557a02651412fd007a
 branch: main
-head: 16e265803e8a6502fc9e007ca37b3ca38a7d2c4e
+head: f97c635432154ee4b122742b233c6614788a7b61
 status: ready
 active_task: none
-updated_at: 2026-08-03T15:27:48Z
+updated_at: 2026-08-03T15:39:47Z
 ---
 
 # Continuity
@@ -49,6 +49,7 @@ Validation: none
 - [x] T-013 | Add policy gates and source-linked fact aging | depends: T-012 | autonomous: yes | accepts: Configured scoped policy checks gate verification, affected facts refresh automatically, and meaningful stalls raise durable blocker cards.
 - [x] T-014 | Audit and harden existing continuity implementation | depends: none | autonomous: yes | accepts: Existing behavior is audited against the original intent; only evidenced defects are corrected; focused tests, race tests, and vet pass.
 - [x] T-015 | Align generated handoffs with restart index | depends: T-014 | autonomous: yes | accepts: Generated no-work and next-task handoffs direct fresh agents through continuity context without restoring redundant startup commands.
+- [ ] T-016 | Harden bounded context and state density | depends: T-015 | autonomous: yes | accepts: Cold-start context never hides gates or recommends blocked work, durable state compacts repetitive history without losing archives, and AGENTS.md remains a minimal cross-harness bootloader.
 ## Active Decisions
 
 - D-001 — Keep committed durable project knowledge in `PROJECT_STATE.md`; Git is the archive. Keep short-lived same-machine ownership outside that file. Why: a bounded current projection avoids both vendor lock-in and transcript bloat without turning progress pings into merge conflicts. Evidence: `internal/continuity/state.go`, `internal/continuity/coordination.go`.
@@ -65,6 +66,7 @@ Validation: none
 - D-012 — Bind each executable planned task to an active approved outcome, a contained edit scope, a validation command, and a compact derivation or selection reason. Why: agents can decompose approved technical work without inventing product scope, while a fresh harness can choose the next task from durable evidence instead of rereading code or chat. Evidence: `internal/continuity/tasks.go`, `cmd/continuity/main.go`, `cmd/continuity/plan.go`.
 - D-013 — Derive compact change handoffs from the claimed Git range at integration time, preserve their full evidence in committed history, and retain only the latest three path-scoped change capsules in active state. Why: later sessions can resume from factual intent, paths, validation, and next work without replaying code discovery, while old detail stays available without bloating routine context. Evidence: `cmd/continuity/history.go`, `cmd/continuity/coordination.go`, `internal/continuity/git.go`.
 - D-014 — Treat source-linked facts, durable blockers, and explicitly user-approved policy checks as portable evidence gates. Why: agents need a shared way to stop on changed assumptions or exhausted hypotheses without relying on a harness's private memory or silently expanding autonomy. Evidence: `cmd/continuity/governance.go`, `cmd/continuity/policy.go`, `internal/continuity/facts.go`.
+- D-015 — Compile restart context by safety priority and compact only archive-backed repetition during integration. Keep `AGENTS.md` as a discovery and invariant bootloader while the skill owns detailed procedure. Why: a byte ceiling must never hide a gate or fabricate a startable task, and the active index must not become a second historical archive. Evidence: `cmd/continuity/coordination.go`, `cmd/continuity/history.go`, `AGENTS.md`, `.agents/skills/project-continuity/SKILL.md`.
 
 ## Fact Cards
 
@@ -83,8 +85,8 @@ Validation: none
 ## Code Map
 
 - CLI command routing — `cmd/continuity/main.go` — parses lifecycle commands, explicitly approved task bootstrap, and state/Git facts.
-- Live coordination commands — `cmd/continuity/coordination.go` — bounded context packets, branch-aware claims, evidence-backed lifecycle integration, next-work handoffs, and Codex hook output.
-- History lifecycle — `cmd/continuity/history.go` — bounded change capsules, full change/outcome/milestone archive records, deterministic next-work selection, and archive-safe receipts.
+- Live coordination commands — `cmd/continuity/coordination.go` — priority-structured context packets, branch-aware claims, evidence-backed lifecycle integration, gate-safe next-work handoffs, and Codex hook output.
+- History lifecycle — `cmd/continuity/history.go` — deterministic active-state compaction, bounded change capsules, full change/outcome/milestone archive records, next-work selection, and archive-safe receipts.
 - State engine — `internal/continuity/state.go` — Markdown front matter, sections, approximately 30k-token validation, path-indexed Context Capsules, structured capsule replacement, templates, and atomic writes.
 - Git facts — `internal/continuity/git.go` — repository snapshots, source fingerprints, incremental reconciliation, and claimed-range changed-path derivation.
 - Coordination store — `internal/continuity/coordination.go` — common-Git-directory claims, heartbeats, branch and scope exclusion, pending completions, and explicit stale recovery.
@@ -172,6 +174,7 @@ Archive: PROJECT_HISTORY/changes/T-015.md
 - Do not silently refresh a fact after its named source changes or retry a stalled task with the same evidence. Synchronize to mark affected facts stale, explicitly confirm review evidence, and resolve blockers only with new evidence or a new hypothesis. Evidence: `cmd/continuity/governance.go`, `internal/continuity/facts.go`.
 - Do not let an ignored fingerprint path bypass fact aging. Claim and check flows separately inspect changed source-linked paths, including project instructions such as `README.md`. Evidence: `cmd/continuity/main.go`, `cmd/continuity/governance_test.go`.
 - Do not equate preserving an existing harness instruction file with integrating Continuity. Preserve its content byte-for-byte and append one idempotent marked bridge when it does not already reference the shared protocol. Evidence: `internal/continuity/adapters.go`.
+- Do not byte-truncate a restart packet or let archive-backed repetition grow without a retention rule. Keep its safety block whole, omit optional sections structurally, and compact only history recoverable from Git or committed archives. Evidence: `cmd/continuity/coordination.go`, `cmd/continuity/history.go`.
 
 ## Verification
 - go vet ./...: pass

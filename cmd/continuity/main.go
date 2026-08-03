@@ -678,6 +678,11 @@ func taskAddCommand(args []string) error {
 		if result := state.Validate(continuity.DefaultStateBudget); !result.OK() {
 			return fmt.Errorf("PROJECT_STATE.md is invalid: %s", strings.Join(result.Errors, "; "))
 		}
+		if _, statErr := os.Stat(filepath.Join(root, filepath.FromSlash(changeArchivePath(*id)))); statErr == nil {
+			return fmt.Errorf("task ID %s already has a committed change archive and cannot be reused", *id)
+		} else if !os.IsNotExist(statErr) {
+			return statErr
+		}
 		if err := requireFreshState(root, state); err != nil {
 			return err
 		}
