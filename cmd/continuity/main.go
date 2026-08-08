@@ -74,6 +74,10 @@ func main() {
 		usage()
 		err = fmt.Errorf("unknown command %q", os.Args[1])
 	}
+	if errors.Is(err, flag.ErrHelp) {
+		// A subcommand's -h is a successful request for help, not a failure.
+		return
+	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "continuity:", err)
 		os.Exit(1)
@@ -107,11 +111,11 @@ Usage:
   continuity heartbeat [--id T-001] --session id [--repo .]
   continuity release [--id T-001] --session id [--repo .]
   continuity recover-lock --force [--repo .]
-  continuity start --id T-001 [--goal text] [--acceptance text] [--next-action text] [--selection-reason text] [--session id|--owner id] [--mode strict|soft|exploratory] [--scope path,...] [--validation command] [--repo .]
-  continuity checkpoint [--id T-001] --summary text --next-action text [--risk text] [--session id|--owner id] [--repo .]
+  continuity start --id T-001 --session id|--owner id [--goal text] [--acceptance text] [--next-action text] [--selection-reason text] [--mode strict|soft|exploratory] [--scope path,...] [--validation command] [--repo .]
+  continuity checkpoint --summary text --next-action text --session id|--owner id [--id T-001] [--risk text] [--repo .]
   continuity finalize [--id T-001] --commit revision --summary text --evidence 'command: result; command: result' [--session id|--owner id] [--repo .]
   continuity integrate --id T-001 [--repo .]
-  continuity codex-hook session-start|subagent-start|pretool
+  continuity codex-hook session-start|subagent-start|user-prompt|pretool
 
 The state file is the portable shared memory. The CLI validates facts; agents and users maintain meaning.`)
 }
@@ -963,7 +967,9 @@ func startCommand(args []string) error {
 		claimOwner = ownerForSession(*session)
 	}
 	if claimOwner == "" {
-		claimOwner = defaultOwner()
+		// A pid-derived fallback produces a claim the next process cannot
+		// address, so heartbeat, checkpoint, and release all become unusable.
+		return errors.New("--owner or --session is required; use an identity the next session can reproduce, for example claude:$(git branch --show-current)")
 	}
 	snapshot := continuity.Snapshot(root)
 	if strings.TrimSpace(snapshot.Branch) == "" {
@@ -1191,18 +1197,6 @@ func requireFreshState(root string, state *continuity.State) error {
 	return nil
 }
 
-func replaceField(content, field, value string) string {
-	lines := strings.Split(content, "\n")
-	prefix := field + ":"
-	for index, line := range lines {
-		if strings.HasPrefix(line, prefix) {
-			lines[index] = prefix + " " + value
-			return strings.Join(lines, "\n")
-		}
-	}
-	return strings.TrimSpace(content) + "\n" + prefix + " " + value
-}
-
 func parseTaskDependencies(value string) []string {
 	if value = strings.TrimSpace(value); value == "" || strings.EqualFold(value, "none") {
 		return nil
@@ -1214,11 +1208,4 @@ func parseTaskDependencies(value string) []string {
 		}
 	}
 	return dependencies
-}
-
-func emptyAsNone(value string) string {
-	if strings.TrimSpace(value) == "" {
-		return "none"
-	}
-	return value
 }

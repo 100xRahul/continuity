@@ -148,7 +148,20 @@ func ListClaims(directory string) ([]Claim, error) {
 	if err != nil {
 		return nil, err
 	}
-	return listClaims(store)
+	claims, _, err := listClaims(store)
+	return claims, err
+}
+
+// ListDamagedClaims reports claim directories whose records cannot be parsed.
+// Callers that display coordination state should surface these, because they
+// are invisible to ListClaims yet still occupy their task ID.
+func ListDamagedClaims(directory string) ([]string, error) {
+	store, err := CoordinationRoot(directory)
+	if err != nil {
+		return nil, err
+	}
+	_, damaged, err := listClaims(store)
+	return damaged, err
 }
 
 func ListCompletions(directory string) ([]Completion, error) {
@@ -197,9 +210,14 @@ func ClaimTask(directory string, request ClaimRequest) (Claim, error) {
 		} else if completed != nil {
 			return fmt.Errorf("task %s has a completed local result awaiting integration from commit %s", request.TaskID, completed.Commit)
 		}
-		claims, err := listClaims(store)
+		claims, damaged, err := listClaims(store)
 		if err != nil {
 			return err
+		}
+		// Granting is the one path that must fail closed: an unreadable record
+		// could hold any task, branch, or scope, so exclusivity is unprovable.
+		if len(damaged) > 0 {
+			return fmt.Errorf("cannot prove exclusivity while claim record(s) %s are unreadable; clear each with continuity release --force-stale --id <task> before claiming", strings.Join(damaged, ", "))
 		}
 		for _, existing := range claims {
 			if existing.TaskID == request.TaskID {
@@ -281,6 +299,12 @@ func HeartbeatClaim(directory, taskID, owner, worktree string) (Claim, error) {
 }
 
 func CheckpointClaim(directory string, request CheckpointRequest) (Claim, error) {
+	// Checkpoint both renews the lease and overwrites progress and next action.
+	// Without an owner it would match on worktree alone, letting any process in
+	// that checkout extend and destroy another owner's restart state.
+	if strings.TrimSpace(request.Owner) == "" {
+		return Claim{}, errors.New("checkpoint requires --owner or --session so it cannot overwrite another worker's claim")
+	}
 	if !singleLine(request.Summary) || !singleLine(request.NextAction) || !singleLineOrEmpty(request.Risk) {
 		return Claim{}, errors.New("checkpoint fields must be single-line text")
 	}
@@ -367,17 +391,23 @@ func RecoverStaleClaim(directory, taskID string) error {
 		return fmt.Errorf("invalid task ID %q", taskID)
 	}
 	return withCoordinationLock(directory, func(store string) error {
-		claim, claimPath, err := locateClaim(store, taskID, "", "")
-		if err != nil {
+		claimDir := filepath.Join(store, "claims", taskID)
+		if _, err := os.Stat(claimDir); err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				return errors.New("no matching active claim")
+			}
 			return err
+		}
+		claim, err := readClaim(filepath.Join(claimDir, "claim.json"))
+		if err != nil {
+			// A record that cannot be parsed carries no lease to respect, and
+			// clearing it is precisely what recovery is for.
+			return os.RemoveAll(claimDir)
 		}
 		if !claim.Stale(time.Now().UTC()) {
 			return fmt.Errorf("claim %s is still live", claim.TaskID)
 		}
-		if err := os.Remove(claimPath); err != nil {
-			return err
-		}
-		return os.Remove(filepath.Dir(claimPath))
+		return os.RemoveAll(claimDir)
 	})
 }
 
@@ -476,7 +506,7 @@ func updateClaim(directory, taskID, owner, worktree string, mutate func(*Claim) 
 }
 
 func locateClaim(store, taskID, owner, worktree string) (Claim, string, error) {
-	claims, err := listClaims(store)
+	claims, _, err := listClaims(store)
 	if err != nil {
 		return Claim{}, "", err
 	}
@@ -502,27 +532,34 @@ func locateClaim(store, taskID, owner, worktree string) (Claim, string, error) {
 	return Claim{}, "", errors.New("no matching active claim")
 }
 
-func listClaims(store string) ([]Claim, error) {
+// listClaims reports readable claims and the task IDs whose records could not be
+// parsed. A damaged record must not hide every other claim: the commands that
+// clear it (status, release --force-stale) read through this same path, so
+// failing hard here would make the corruption unrecoverable.
+func listClaims(store string) ([]Claim, []string, error) {
 	entries, err := os.ReadDir(filepath.Join(store, "claims"))
 	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil
+		return nil, nil, nil
 	}
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	claims := make([]Claim, 0, len(entries))
+	var damaged []string
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
 		}
 		claim, err := readClaim(filepath.Join(store, "claims", entry.Name(), "claim.json"))
 		if err != nil {
-			return nil, fmt.Errorf("read claim %s: %w", entry.Name(), err)
+			damaged = append(damaged, entry.Name())
+			continue
 		}
 		claims = append(claims, claim)
 	}
 	sort.Slice(claims, func(i, j int) bool { return claims[i].TaskID < claims[j].TaskID })
-	return claims, nil
+	sort.Strings(damaged)
+	return claims, damaged, nil
 }
 
 func listCompletions(store string) ([]Completion, error) {
@@ -653,7 +690,9 @@ func normalizeScopes(scope []string) ([]string, error) {
 	for _, item := range scope {
 		item = strings.TrimSpace(item)
 		if item == "" || item == "none" {
-			return []string{"."}, nil
+			// Silently widening to "." here would let one typo in a scope list
+			// claim the whole repository and reject every other worker.
+			return nil, fmt.Errorf("scope %q is not a path; pass repository-relative paths, or \".\" to deliberately claim the whole repository", item)
 		}
 		if filepath.IsAbs(item) {
 			return nil, fmt.Errorf("scope %q must be repository-relative", item)

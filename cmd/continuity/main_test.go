@@ -36,10 +36,10 @@ func TestLifecycleCommands(t *testing.T) {
 	runGitCommand(t, root, "add", ".")
 	runGitCommand(t, root, "commit", "-m", "baseline")
 
-	if err := startCommand([]string{"--repo", root, "--id", "T-001", "--goal", "Prove lifecycle", "--acceptance", "State reaches ready after finalization.", "--next-action", "Write the checkpoint."}); err != nil {
+	if err := startCommand([]string{"--repo", root, "--id", "T-001", "--owner", "claude:lifecycle", "--goal", "Prove lifecycle", "--acceptance", "State reaches ready after finalization.", "--next-action", "Write the checkpoint."}); err != nil {
 		t.Fatal(err)
 	}
-	if err := checkpointCommand([]string{"--repo", root, "--summary", "Started and inspected state.", "--next-action", "Finalize the task."}); err != nil {
+	if err := checkpointCommand([]string{"--repo", root, "--owner", "claude:lifecycle", "--summary", "Started and inspected state.", "--next-action", "Finalize the task."}); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(root, "result.go"), []byte("package result\n"), 0o644); err != nil {

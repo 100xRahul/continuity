@@ -203,6 +203,92 @@ func TestRecoverStaleClaimAcrossWorktrees(t *testing.T) {
 	}
 }
 
+func TestDamagedClaimIsReportableAndRecoverable(t *testing.T) {
+	root, peer := testWorktrees(t)
+	if _, err := ClaimTask(root, ClaimRequest{TaskID: "T-001", Owner: "codex:worker", Worktree: root, Branch: "main", Scope: []string{"cmd"}}); err != nil {
+		t.Fatal(err)
+	}
+	store, err := CoordinationRoot(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	damagedDir := filepath.Join(store, "claims", "T-999")
+	if err := os.MkdirAll(damagedDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(damagedDir, "claim.json"), []byte("{not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// A damaged record must not hide the healthy claims beside it.
+	claims, err := ListClaims(root)
+	if err != nil {
+		t.Fatalf("one damaged record broke listing: %v", err)
+	}
+	if len(claims) != 1 || claims[0].TaskID != "T-001" {
+		t.Fatalf("expected the healthy claim to survive, got %#v", claims)
+	}
+	damaged, err := ListDamagedClaims(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(damaged) != 1 || damaged[0] != "T-999" {
+		t.Fatalf("damaged record was not reported: %#v", damaged)
+	}
+
+	// Granting must still fail closed, because an unreadable record could
+	// hold any task, branch, or scope.
+	if _, err := ClaimTask(peer, ClaimRequest{TaskID: "T-002", Owner: "codex:other", Worktree: peer, Branch: "peer", Scope: []string{"internal"}}); err == nil {
+		t.Fatal("claim was granted while exclusivity was unprovable")
+	}
+
+	// Recovery must be able to clear exactly what blocks it.
+	if err := RecoverStaleClaim(peer, "T-999"); err != nil {
+		t.Fatalf("damaged record could not be recovered: %v", err)
+	}
+	if _, err := ClaimTask(peer, ClaimRequest{TaskID: "T-002", Owner: "codex:other", Worktree: peer, Branch: "peer", Scope: []string{"internal"}}); err != nil {
+		t.Fatalf("claiming still blocked after recovery: %v", err)
+	}
+}
+
+func TestScopeRejectsNonPathPlaceholders(t *testing.T) {
+	root, _ := testWorktrees(t)
+	for _, scope := range [][]string{{"none"}, {"cmd", "none"}, {"cmd", "  "}} {
+		_, err := ClaimTask(root, ClaimRequest{TaskID: "T-001", Owner: "codex:worker", Worktree: root, Branch: "main", Scope: scope})
+		if err == nil {
+			t.Fatalf("scope %v silently widened instead of erroring", scope)
+		}
+		if !strings.Contains(err.Error(), "is not a path") {
+			t.Fatalf("scope %v gave an unhelpful error: %v", scope, err)
+		}
+	}
+	// "." stays valid so repository-wide claims remain possible on purpose.
+	if _, err := ClaimTask(root, ClaimRequest{TaskID: "T-001", Owner: "codex:worker", Worktree: root, Branch: "main", Scope: []string{"."}}); err != nil {
+		t.Fatalf("explicit repository-wide scope was rejected: %v", err)
+	}
+}
+
+func TestCheckpointRequiresOwner(t *testing.T) {
+	root, _ := testWorktrees(t)
+	if _, err := ClaimTask(root, ClaimRequest{TaskID: "T-001", Owner: "codex:worker", Worktree: root, Branch: "main", Scope: []string{"cmd"}}); err != nil {
+		t.Fatal(err)
+	}
+	_, err := CheckpointClaim(root, CheckpointRequest{Worktree: root, Summary: "drive-by", NextAction: "none"})
+	if err == nil {
+		t.Fatal("checkpoint overwrote a claim without proving ownership")
+	}
+	if !strings.Contains(err.Error(), "requires --owner") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	claim, err := CheckpointClaim(root, CheckpointRequest{TaskID: "T-001", Owner: "codex:worker", Worktree: root, Summary: "real progress", NextAction: "finalize"})
+	if err != nil {
+		t.Fatalf("owner checkpoint was rejected: %v", err)
+	}
+	if claim.Progress != "real progress" {
+		t.Fatalf("checkpoint did not record progress: %#v", claim)
+	}
+}
+
 func TestRecoverCoordinationLockIsExplicitAndStaleOnly(t *testing.T) {
 	root, _ := testWorktrees(t)
 	store, err := CoordinationRoot(root)

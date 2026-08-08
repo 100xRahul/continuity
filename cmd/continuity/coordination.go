@@ -61,6 +61,16 @@ func statusCommand(args []string) error {
 			fmt.Printf("- %s | commit: %s | %s\n", completion.TaskID, completion.Commit, completion.Summary)
 		}
 	}
+	damaged, err := continuity.ListDamagedClaims(root)
+	if err != nil {
+		return err
+	}
+	if len(damaged) > 0 {
+		fmt.Println("Damaged claim records (block all claiming until cleared):")
+		for _, taskID := range damaged {
+			fmt.Printf("- %s | run continuity release --force-stale --id %s\n", taskID, taskID)
+		}
+	}
 	return nil
 }
 
@@ -829,7 +839,10 @@ func isContinuityCommand(command string) bool {
 
 func isContinuityLifecycleVerb(value string) bool {
 	switch value {
-	case "blocker", "brief", "check", "context", "fact", "finalize", "heartbeat", "integrate", "plan", "policy", "ready", "reconcile", "recover-lock", "release", "start", "status", "task":
+	// checkpoint sits beside heartbeat deliberately: it renews the same lease
+	// and, since it now requires an owner, can only touch the caller's own
+	// claim. sync stays out because it rewrites PROJECT_STATE.md.
+	case "blocker", "brief", "check", "checkpoint", "context", "fact", "finalize", "heartbeat", "integrate", "plan", "policy", "ready", "reconcile", "recover-lock", "release", "start", "status", "task":
 		return true
 	default:
 		return false
@@ -925,14 +938,6 @@ func contextOwnerFor(owner, session string) string {
 		return owner
 	}
 	return ownerForSession(session)
-}
-
-func defaultOwner() string {
-	host, err := os.Hostname()
-	if err != nil || host == "" {
-		host = "local"
-	}
-	return fmt.Sprintf("local:%s:%d", host, os.Getpid())
 }
 
 func parseScope(value string) []string {
