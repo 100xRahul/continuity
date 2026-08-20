@@ -90,6 +90,7 @@ continuity status                 show active claims and pending completions
 continuity check                  validate durable state, task graph, and freshness
 continuity reconcile              list relevant changes since durable synchronization
 continuity sync                   refresh durable Git facts after reconciliation
+continuity compact                trim the durable state back under its size budget
 continuity ready                  rank unclaimed autonomous ready tasks with selection evidence
 continuity task add               record a user-specified or plan-bounded derived task before any claim exists
 continuity plan                   create, validate, approve, activate, and inspect the delivery plan
@@ -137,6 +138,8 @@ That command immediately commits the queue record, so other worktrees and harnes
 ## State and freshness
 
 `PROJECT_STATE.md` has a default 120,000-byte budget: approximately 30,000 tokens using a deliberately conservative four-bytes-per-token estimate. This is a durable-storage budget, not an instruction to inject the entire file into every session. It holds current, load-bearing facts rather than a diary. `PROJECT_PLAN.md` holds the detailed roadmap and approval contract; completed milestone detail can move to committed `PROJECT_HISTORY/` archives.
+
+Exceeding that budget warns rather than blocks. `continuity check` reports it as an error with a non-zero exit, but `ready`, `task add`, `start`, and `integrate` continue with a warning: blocking them would deadlock the repository, because compaction runs inside `integrate` and no other command can reduce the file. Run `continuity compact` to trim it. Compaction bounds `Ready Queue`, `Verification`, and `Recent Material Changes`; growth in the other sections, `Code Map` in particular, has to be moved into `PROJECT_HISTORY/` by hand, and `compact` says so when it cannot get the file under budget on its own.
 
 ### Layered context, not 30k-token startup prompts
 

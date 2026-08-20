@@ -30,6 +30,8 @@ func main() {
 		err = checkCommand(os.Args[2:])
 	case "reconcile":
 		err = reconcileCommand(os.Args[2:])
+	case "compact":
+		err = compactCommand(os.Args[2:])
 	case "sync":
 		err = syncCommand(os.Args[2:])
 	case "ready":
@@ -93,6 +95,7 @@ Usage:
   continuity check [--repo .] [--budget bytes]
   continuity reconcile [--repo .]
   continuity sync [--repo .]
+  continuity compact [--repo .]
   continuity ready [--repo .]
   continuity task add --id T-001 --title text --accepts text [--approved|--derived --rationale text --outcome O-001 --scope path --validates command] [--depends none] [--autonomous yes|no] [--repo .]
   continuity plan init --intent text [--project name] [--repo .]
@@ -536,8 +539,8 @@ func readyCommand(args []string) error {
 	if err != nil {
 		return err
 	}
-	if result := state.Validate(continuity.DefaultStateBudget); !result.OK() {
-		return fmt.Errorf("PROJECT_STATE.md is invalid: %s", strings.Join(result.Errors, "; "))
+	if err := requireUsableState(state); err != nil {
+		return err
 	}
 	if err := requireFreshState(root, state); err != nil {
 		return err
@@ -679,8 +682,8 @@ func taskAddCommand(args []string) error {
 		if err != nil {
 			return err
 		}
-		if result := state.Validate(continuity.DefaultStateBudget); !result.OK() {
-			return fmt.Errorf("PROJECT_STATE.md is invalid: %s", strings.Join(result.Errors, "; "))
+		if err := requireUsableState(state); err != nil {
+			return err
 		}
 		if _, statErr := os.Stat(filepath.Join(root, filepath.FromSlash(changeArchivePath(*id)))); statErr == nil {
 			return fmt.Errorf("task ID %s already has a committed change archive and cannot be reused", *id)
@@ -843,8 +846,8 @@ func startCommand(args []string) error {
 	if err != nil {
 		return err
 	}
-	if result := state.Validate(continuity.DefaultStateBudget); !result.OK() {
-		return fmt.Errorf("PROJECT_STATE.md is invalid: %s", strings.Join(result.Errors, "; "))
+	if err := requireUsableState(state); err != nil {
+		return err
 	}
 	if err := requireFreshState(root, state); err != nil {
 		return err
@@ -1167,6 +1170,59 @@ func synchronizeWithAging(state *continuity.State, root string) ([]continuity.Fa
 		return nil, err
 	}
 	return aged, nil
+}
+
+// requireUsableState refuses a structurally invalid state but lets a state that
+// is merely over its size budget proceed with a warning. Blocking here would be
+// a deadlock: the only compactor runs inside integrate, so refusing work intake
+// on size alone leaves no command able to reduce the size. `continuity check`
+// still reports the overflow as an error with a non-zero exit.
+// runCompact exposes the compactor that otherwise only runs inside integrate.
+// Without it an over-budget state cannot be reduced by any command.
+func compactCommand(args []string) error {
+	root, err := parseRepo(args, "compact")
+	if err != nil {
+		return err
+	}
+	state, err := loadState(root)
+	if err != nil {
+		return err
+	}
+	before := len(state.Render())
+	if err := compactDurableState(root, state, ""); err != nil {
+		return err
+	}
+	if err := state.Save(); err != nil {
+		return err
+	}
+	after := len(state.Render())
+	budget := continuity.DefaultStateBudget
+	fmt.Printf("compacted PROJECT_STATE.md from %d to %d bytes (budget %d)\n", before, after, budget)
+	if after > budget {
+		fmt.Fprintf(os.Stderr, "WARN still %d bytes over budget; the compactor only trims Ready Queue, Verification and Recent Material Changes - move detail from the other sections into PROJECT_HISTORY/\n", after-budget)
+	}
+	return nil
+}
+
+func requireUsableState(state *continuity.State) error {
+	result := state.Validate(continuity.DefaultStateBudget)
+	if result.OK() {
+		return nil
+	}
+	structural := make([]string, 0, len(result.Errors))
+	overflow := ""
+	for _, item := range result.Errors {
+		if strings.HasPrefix(item, "state is ") && strings.Contains(item, "budget is ") {
+			overflow = item
+			continue
+		}
+		structural = append(structural, item)
+	}
+	if len(structural) > 0 {
+		return fmt.Errorf("PROJECT_STATE.md is invalid: %s", strings.Join(structural, "; "))
+	}
+	fmt.Fprintf(os.Stderr, "WARN %s; run continuity compact to reduce it\n", overflow)
+	return nil
 }
 
 func requireFreshState(root string, state *continuity.State) error {

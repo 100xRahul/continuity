@@ -615,8 +615,8 @@ func integrateCommand(args []string) error {
 		if err != nil {
 			return err
 		}
-		if result := state.Validate(continuity.DefaultStateBudget); !result.OK() {
-			return fmt.Errorf("PROJECT_STATE.md is invalid: %s", strings.Join(result.Errors, "; "))
+		if err := requireUsableState(state); err != nil {
+			return err
 		}
 		snapshot := continuity.Snapshot(root)
 		if state.Meta["branch"] != "" && state.Meta["branch"] != "unborn" && snapshot.Branch != state.Meta["branch"] {
@@ -697,8 +697,8 @@ func integrateCommand(args []string) error {
 		if _, err := synchronizeWithAging(state, root); err != nil {
 			return err
 		}
-		if result := state.Validate(continuity.DefaultStateBudget); !result.OK() {
-			return fmt.Errorf("integration exceeds durable state budget: %s", strings.Join(result.Errors, "; "))
+		if err := requireUsableState(state); err != nil {
+			return err
 		}
 		if err := state.Save(); err != nil {
 			return err
