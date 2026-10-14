@@ -11,13 +11,18 @@ import (
 func TestHooksDeliverDecisionsAtStartAndOncePerSessionOnFileUse(t *testing.T) {
 	root := decisionRepo(t)
 	start := runHook(t, "claude", "session-start", map[string]any{"session_id": "s1", "cwd": root, "source": "startup"})
-	for _, want := range []string{"Current decisions in docs/adr", "- Use SQLite for local storage → docs/adr/2026-02-10-use-sqlite.md", "- Keep API fields in snake_case"} {
+	for _, want := range []string{
+		"Next: active milestone M-001 — Local storage. Open outcomes, in plan order:\n- O-002 Persist sessions — accepts: A restarted process reads earlier sessions.",
+		"Constraints:\n- Work only on outcomes listed in PROJECT_PLAN.md",
+		"Last handoff:\nLast session: state initialized.",
+		"Current decisions in docs/adr", "- Use SQLite for local storage → docs/adr/2026-02-10-use-sqlite.md", "- Keep API fields in snake_case",
+	} {
 		if !strings.Contains(start, want) {
 			t.Errorf("session-start context lacks %q:\n%s", want, start)
 		}
 	}
-	if strings.Contains(start, "Postgres") {
-		t.Fatalf("session-start context listed a superseded decision:\n%s", start)
+	if strings.Contains(start, "Postgres") || strings.Contains(start, "O-001") {
+		t.Fatalf("session-start context listed a superseded decision or a done outcome:\n%s", start)
 	}
 
 	read := map[string]any{"session_id": "s1", "cwd": root, "tool_name": "Read", "tool_input": map[string]any{"file_path": filepath.Join(root, "internal", "db", "store.go")}}

@@ -10,7 +10,7 @@ import (
 	"continuity/internal/continuity"
 )
 
-func TestSyncUpdatesGitFactsWithoutChangingTaskState(t *testing.T) {
+func TestSyncRecordsGitFactsAndKeepsTheHandoff(t *testing.T) {
 	root := t.TempDir()
 	if _, err := continuity.EnsureGitRepo(root); err != nil {
 		t.Fatal(err)
@@ -22,10 +22,9 @@ func TestSyncUpdatesGitFactsWithoutChangingTaskState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	state := continuity.NewTemplate(filepath.Join(root, continuity.StateFilename), "Test", "Test sync.", continuity.Snapshot(root), fingerprint)
-	state.SetMeta("status", "working")
-	state.SetMeta("active_task", "T-001")
-	if err := state.ReplaceSection("Active Work", "Task: T-001\nStatus: in_progress\nMode: strict\nGoal: preserve active work\nAcceptance criteria: task state remains active\nImmediate next action: synchronize\nEdit scope: none\nValidation: none"); err != nil {
+	state := continuity.NewTemplate(filepath.Join(root, continuity.StateFilename), "Test", continuity.Snapshot(root), fingerprint)
+	handoff := "Last session: added the service skeleton.\nNext step: wire the HTTP handler."
+	if err := state.ReplaceSection("Handoff", handoff); err != nil {
 		t.Fatal(err)
 	}
 	if err := state.Save(); err != nil {
@@ -47,8 +46,8 @@ func TestSyncUpdatesGitFactsWithoutChangingTaskState(t *testing.T) {
 	if synced.Meta["head"] != head || synced.Meta["branch"] != "main" {
 		t.Fatalf("unexpected Git metadata: %#v", synced.Meta)
 	}
-	if synced.Meta["status"] != "working" || synced.Meta["active_task"] != "T-001" {
-		t.Fatalf("sync changed task state: %#v", synced.Meta)
+	if synced.Section("Handoff") != handoff {
+		t.Fatalf("sync changed the handoff: %q", synced.Section("Handoff"))
 	}
 }
 

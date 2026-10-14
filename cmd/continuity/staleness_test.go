@@ -21,7 +21,7 @@ func TestCheckRejectsStaleSourceState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	state := continuity.NewTemplate(filepath.Join(root, continuity.StateFilename), "Test", "Test freshness.", continuity.Snapshot(root), fingerprint)
+	state := continuity.NewTemplate(filepath.Join(root, continuity.StateFilename), "Test", continuity.Snapshot(root), fingerprint)
 	if err := state.Save(); err != nil {
 		t.Fatal(err)
 	}

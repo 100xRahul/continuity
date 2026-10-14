@@ -7,7 +7,7 @@ import (
 )
 
 func TestFactCardsAgeOnlyOverlappingFreshEvidence(t *testing.T) {
-	state := NewTemplate("PROJECT_STATE.md", "Test", "Test source-linked facts.", GitSnapshot{}, "sha256:test")
+	state := NewTemplate("PROJECT_STATE.md", "Test", GitSnapshot{}, "sha256:test")
 	verified := time.Date(2026, 7, 30, 0, 0, 0, 0, time.UTC)
 	cards := []FactCard{
 		{Status: "fresh", ID: "F-001", Source: "D-001", Paths: []string{"internal/continuity"}, VerifiedAt: verified, Evidence: "Parser review passed.", Summary: "State parser boundary remains valid."},
@@ -46,27 +46,8 @@ func TestFactCardsAgeOnlyOverlappingFreshEvidence(t *testing.T) {
 	}
 }
 
-func TestBlockerCardsRoundTripAndRejectUnsafeResolution(t *testing.T) {
-	state := NewTemplate("PROJECT_STATE.md", "Test", "Test blockers.", GitSnapshot{}, "sha256:test")
-	blocker := BlockerCard{Status: "open", ID: "B-001", TaskID: "T-001", Scope: []string{"internal/continuity"}, Hypothesis: "Parser input has an unhandled legacy shape.", Evidence: "Focused parser test fails.", NextAction: "Create a minimal failing fixture.", Resolution: "none"}
-	if err := state.ReplaceBlockerCards([]BlockerCard{blocker}); err != nil {
-		t.Fatal(err)
-	}
-	parsed, err := state.BlockerCards()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(parsed) != 1 || parsed[0].ID != blocker.ID || parsed[0].Status != "open" {
-		t.Fatalf("blocker cards = %#v", parsed)
-	}
-	_, err = ParseBlockerCards("- [open] B-002 | task: T-001 | scope: internal | hypothesis: no | evidence: no | next: no | resolution: resolved")
-	if err == nil || !strings.Contains(err.Error(), "resolution none") {
-		t.Fatalf("unsafe open blocker resolution was accepted: %v", err)
-	}
-}
-
 func TestCardReplacementRejectsInvalidDirectInput(t *testing.T) {
-	state := NewTemplate("PROJECT_STATE.md", "Test", "Test direct card validation.", GitSnapshot{}, "sha256:test")
+	state := NewTemplate("PROJECT_STATE.md", "Test", GitSnapshot{}, "sha256:test")
 	verified := time.Date(2026, 7, 30, 0, 0, 0, 0, time.UTC)
 	if err := state.ReplaceFactCards([]FactCard{{
 		Status:     "fresh",
@@ -78,18 +59,6 @@ func TestCardReplacementRejectsInvalidDirectInput(t *testing.T) {
 		Summary:    "Invalid identifier must not be rendered.",
 	}}); err == nil || !strings.Contains(err.Error(), "fact ID") {
 		t.Fatalf("invalid direct fact card was accepted: %v", err)
-	}
-	if err := state.ReplaceBlockerCards([]BlockerCard{{
-		Status:     "open",
-		ID:         "B-?",
-		TaskID:     "T-001",
-		Scope:      []string{"internal"},
-		Hypothesis: "Input is invalid.",
-		Evidence:   "Fixture reproduces it.",
-		NextAction: "Replace the malformed identifier.",
-		Resolution: "none",
-	}}); err == nil || !strings.Contains(err.Error(), "blocker ID") {
-		t.Fatalf("invalid direct blocker card was accepted: %v", err)
 	}
 	if err := state.ReplaceFactCards([]FactCard{{
 		Status:     "fresh",

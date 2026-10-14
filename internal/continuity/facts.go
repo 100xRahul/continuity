@@ -11,11 +11,8 @@ import (
 )
 
 var (
-	factCardPattern  = regexp.MustCompile(`^- \[(fresh|stale)\] (F-[A-Za-z0-9_-]+) \| source: ([^|]+) \| paths: ([^|]+) \| verified: ([^|]+) \| evidence: ([^|]+) \| summary: (.+)$`)
-	blockerPattern   = regexp.MustCompile(`^- \[(open|resolved)\] (B-[A-Za-z0-9_-]+) \| task: ([^|]+) \| scope: ([^|]+) \| hypothesis: ([^|]+) \| evidence: ([^|]+) \| next: ([^|]+) \| resolution: (.+)$`)
-	factIDPattern    = regexp.MustCompile(`^F-[A-Za-z0-9][A-Za-z0-9_-]*$`)
-	blockerIDPattern = regexp.MustCompile(`^B-[A-Za-z0-9][A-Za-z0-9_-]*$`)
-	taskIDPattern    = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_-]*$`)
+	factCardPattern = regexp.MustCompile(`^- \[(fresh|stale)\] (F-[A-Za-z0-9_-]+) \| source: ([^|]+) \| paths: ([^|]+) \| verified: ([^|]+) \| evidence: ([^|]+) \| summary: (.+)$`)
+	factIDPattern   = regexp.MustCompile(`^F-[A-Za-z0-9][A-Za-z0-9_-]*$`)
 )
 
 // FactCard is a compact, source-linked claim that can age automatically when
@@ -29,20 +26,6 @@ type FactCard struct {
 	VerifiedAt time.Time
 	Evidence   string
 	Summary    string
-}
-
-// BlockerCard is a durable, compact handoff for a meaningful stall. It holds
-// only the falsifiable hypothesis and evidence needed for a later agent to
-// make progress, never logs or raw model reasoning.
-type BlockerCard struct {
-	Status     string
-	ID         string
-	TaskID     string
-	Scope      []string
-	Hypothesis string
-	Evidence   string
-	NextAction string
-	Resolution string
 }
 
 func (s *State) FactCards() ([]FactCard, error) {
@@ -60,25 +43,7 @@ func (s *State) ReplaceFactCards(cards []FactCard) error {
 		}
 		seen[card.ID] = true
 	}
-	return s.ReplaceOrAddSection("Fact Cards", RenderFactCards(cards))
-}
-
-func (s *State) BlockerCards() ([]BlockerCard, error) {
-	return ParseBlockerCards(s.Section("Blocker Cards"))
-}
-
-func (s *State) ReplaceBlockerCards(cards []BlockerCard) error {
-	seen := map[string]bool{}
-	for _, card := range cards {
-		if err := validateBlockerCard(card); err != nil {
-			return err
-		}
-		if seen[card.ID] {
-			return fmt.Errorf("duplicate blocker ID %s", card.ID)
-		}
-		seen[card.ID] = true
-	}
-	return s.ReplaceOrAddSection("Blocker Cards", RenderBlockerCards(cards))
+	return s.ReplaceSection("Fact Cards", RenderFactCards(cards))
 }
 
 func ParseFactCards(content string) ([]FactCard, error) {
@@ -180,16 +145,6 @@ func (s *State) AgeFactCards(changedPaths []string) ([]FactCard, error) {
 	return aged, nil
 }
 
-func StaleFactCardsForScopes(cards []FactCard, scopes []string) []FactCard {
-	stale := []FactCard{}
-	for _, card := range cards {
-		if card.Status == "stale" && (len(scopes) == 0 || anyPathsOverlap(card.Paths, scopes)) {
-			stale = append(stale, card)
-		}
-	}
-	return stale
-}
-
 func FactCardsAffectedByPaths(cards []FactCard, paths []string) []FactCard {
 	paths = normalizeCardPaths(paths)
 	affected := []FactCard{}
@@ -199,89 +154,6 @@ func FactCardsAffectedByPaths(cards []FactCard, paths []string) []FactCard {
 		}
 	}
 	return affected
-}
-
-func ParseBlockerCards(content string) ([]BlockerCard, error) {
-	content = strings.TrimSpace(content)
-	if content == "" {
-		return nil, nil
-	}
-	seen := map[string]bool{}
-	cards := []BlockerCard{}
-	for _, raw := range strings.Split(content, "\n") {
-		line := strings.TrimSpace(raw)
-		match := blockerPattern.FindStringSubmatch(line)
-		if len(match) == 0 {
-			return nil, errors.New("Blocker Cards must use '- [open] B-001 | task: T-001 | scope: path | hypothesis: ... | evidence: ... | next: ... | resolution: none'")
-		}
-		if seen[match[2]] {
-			return nil, fmt.Errorf("duplicate blocker ID %s", match[2])
-		}
-		scope, err := parseCapsulePaths(match[4])
-		if err != nil {
-			return nil, fmt.Errorf("blocker %s scope: %w", match[2], err)
-		}
-		card := BlockerCard{
-			Status:     match[1],
-			ID:         match[2],
-			TaskID:     strings.TrimSpace(match[3]),
-			Scope:      scope,
-			Hypothesis: strings.TrimSpace(match[5]),
-			Evidence:   strings.TrimSpace(match[6]),
-			NextAction: strings.TrimSpace(match[7]),
-			Resolution: strings.TrimSpace(match[8]),
-		}
-		if err := validateBlockerCard(card); err != nil {
-			return nil, err
-		}
-		seen[card.ID] = true
-		cards = append(cards, card)
-	}
-	return cards, nil
-}
-
-func RenderBlockerCards(cards []BlockerCard) string {
-	lines := make([]string, 0, len(cards))
-	for _, card := range cards {
-		lines = append(lines, RenderBlockerCard(card))
-	}
-	return strings.Join(lines, "\n")
-}
-
-func RenderBlockerCard(card BlockerCard) string {
-	return fmt.Sprintf("- [%s] %s | task: %s | scope: %s | hypothesis: %s | evidence: %s | next: %s | resolution: %s", card.Status, card.ID, card.TaskID, strings.Join(card.Scope, ", "), card.Hypothesis, card.Evidence, card.NextAction, card.Resolution)
-}
-
-func validateBlockerCard(card BlockerCard) error {
-	if card.Status != "open" && card.Status != "resolved" {
-		return fmt.Errorf("blocker %s has unsupported status %q", card.ID, card.Status)
-	}
-	if !blockerIDPattern.MatchString(card.ID) {
-		return fmt.Errorf("blocker ID %q must match B- followed by letters, digits, underscores, or hyphens", card.ID)
-	}
-	if card.TaskID == "" || (card.TaskID != "none" && !taskIDPattern.MatchString(card.TaskID)) {
-		return fmt.Errorf("blocker %s has invalid task %q", card.ID, card.TaskID)
-	}
-	if err := validateCardPaths("blocker "+card.ID, card.Scope); err != nil {
-		return err
-	}
-	if card.Status == "open" && card.Resolution != "none" {
-		return fmt.Errorf("open blocker %s must have resolution none", card.ID)
-	}
-	if card.Status == "resolved" && card.Resolution == "none" {
-		return fmt.Errorf("resolved blocker %s requires resolution evidence", card.ID)
-	}
-	return validateCompactFields("blocker "+card.ID, card.Hypothesis, card.Evidence, card.NextAction, card.Resolution)
-}
-
-func OpenBlockerCardsForScopes(cards []BlockerCard, scopes []string) []BlockerCard {
-	open := []BlockerCard{}
-	for _, card := range cards {
-		if card.Status == "open" && (len(scopes) == 0 || anyPathsOverlap(card.Scope, scopes)) {
-			open = append(open, card)
-		}
-	}
-	return open
 }
 
 func normalizeCardPaths(paths []string) []string {

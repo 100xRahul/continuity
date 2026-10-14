@@ -13,23 +13,18 @@ import (
 const (
 	PitfallsSection             = "Known Pitfalls and Failed Approaches"
 	StateFilename               = "PROJECT_STATE.md"
-	CurrentStateSchema          = "3"
+	CurrentStateSchema          = "4"
 	ApproximateStateTokenBudget = 30_000
 	ApproximateBytesPerToken    = 4
 	DefaultStateBudget          = ApproximateStateTokenBudget * ApproximateBytesPerToken
 )
 
 var RequiredSections = []string{
-	"Product Intent",
-	"Approved Outcomes",
-	"Active Work",
-	"Ready Queue",
 	"Constraints and Approval Boundaries",
 	"Code Map",
+	"Fact Cards",
 	"Context Capsules",
-	"Known Pitfalls and Failed Approaches",
-	"Verification",
-	"Recent Material Changes",
+	PitfallsSection,
 	"Handoff",
 }
 
@@ -38,8 +33,6 @@ var metadataOrder = []string{
 	"fingerprint",
 	"branch",
 	"head",
-	"status",
-	"active_task",
 	"updated_at",
 }
 
@@ -87,20 +80,30 @@ func LoadState(path string) (*State, error) {
 	if err != nil {
 		return nil, err
 	}
-	content := strings.ReplaceAll(string(bytes), "\r\n", "\n")
-	if !strings.HasPrefix(content, "---\n") {
-		return nil, errors.New("PROJECT_STATE.md must start with YAML-like front matter")
-	}
-	end := strings.Index(content[4:], "\n---\n")
-	if end < 0 {
-		return nil, errors.New("PROJECT_STATE.md front matter is missing its closing ---")
-	}
-	end += 4
-	meta, err := parseFrontMatter(content[4:end])
+	meta, body, err := splitFrontMatter(string(bytes), filepath.Base(path))
 	if err != nil {
 		return nil, err
 	}
-	return NewState(path, meta, content[end+5:]), nil
+	return NewState(path, meta, body), nil
+}
+
+// splitFrontMatter separates the "---" delimited key: value header shared by
+// the state and plan files from the Markdown body that follows it.
+func splitFrontMatter(contents, name string) (map[string]string, string, error) {
+	contents = strings.ReplaceAll(contents, "\r\n", "\n")
+	if !strings.HasPrefix(contents, "---\n") {
+		return nil, "", fmt.Errorf("%s must start with YAML-like front matter", name)
+	}
+	end := strings.Index(contents[4:], "\n---\n")
+	if end < 0 {
+		return nil, "", fmt.Errorf("%s front matter is missing its closing ---", name)
+	}
+	end += 4
+	meta, err := parseFrontMatter(contents[4:end])
+	if err != nil {
+		return nil, "", fmt.Errorf("%s: %w", name, err)
+	}
+	return meta, contents[end+5:], nil
 }
 
 func parseFrontMatter(input string) (map[string]string, error) {
@@ -132,20 +135,25 @@ func normalizeBody(body string) string {
 }
 
 func (s *State) parseSections() {
-	s.Sections = map[string]string{}
-	s.DuplicateSections = nil
-	lines := strings.Split(s.Body, "\n")
+	s.Sections, s.DuplicateSections = markdownSections(s.Body)
+}
+
+// markdownSections maps each "## " heading to its text and lists headings
+// that appear more than once, so a forged second section is detectable.
+func markdownSections(body string) (map[string]string, []string) {
+	sections := map[string]string{}
+	duplicates := []string{}
 	var current string
 	var contents []string
 	flush := func() {
 		if current != "" {
-			if _, exists := s.Sections[current]; exists {
-				s.DuplicateSections = append(s.DuplicateSections, current)
+			if _, exists := sections[current]; exists {
+				duplicates = append(duplicates, current)
 			}
-			s.Sections[current] = strings.Trim(strings.Join(contents, "\n"), "\n")
+			sections[current] = strings.Trim(strings.Join(contents, "\n"), "\n")
 		}
 	}
-	for _, line := range lines {
+	for _, line := range strings.Split(body, "\n") {
 		if strings.HasPrefix(line, "## ") && strings.TrimSpace(strings.TrimPrefix(line, "## ")) != "" {
 			flush()
 			current = strings.TrimSpace(strings.TrimPrefix(line, "## "))
@@ -157,6 +165,7 @@ func (s *State) parseSections() {
 		}
 	}
 	flush()
+	return sections, duplicates
 }
 
 func (s *State) Section(name string) string { return s.Sections[name] }
@@ -181,26 +190,6 @@ func (s *State) ReplaceSection(name, content string) error {
 	} else {
 		next += contentStart + 1
 		s.Body = s.Body[:start] + replacement + s.Body[next:]
-	}
-	s.Body = normalizeBody(s.Body)
-	s.parseSections()
-	return nil
-}
-
-// ReplaceOrAddSection preserves backwards compatibility with earlier state
-// documents while allowing new optional structured projections to be added
-// without a format migration.
-func (s *State) ReplaceOrAddSection(name, content string) error {
-	if strings.TrimSpace(name) == "" || strings.ContainsAny(name, "\r\n") {
-		return errors.New("section name must be a non-empty single line")
-	}
-	if _, exists := s.Sections[name]; exists {
-		return s.ReplaceSection(name, content)
-	}
-	content = strings.TrimSpace(content)
-	s.Body = strings.TrimSpace(s.Body) + "\n\n## " + name + "\n\n"
-	if content != "" {
-		s.Body += content + "\n"
 	}
 	s.Body = normalizeBody(s.Body)
 	s.parseSections()
@@ -285,12 +274,7 @@ func (s *State) Validate(budget int) Validation {
 		}
 	}
 	if s.Meta["schema"] != CurrentStateSchema {
-		result.Errorf("unsupported schema %q; expected %s", s.Meta["schema"], CurrentStateSchema)
-	}
-	switch s.Meta["status"] {
-	case "ready", "working", "blocked":
-	default:
-		result.Errorf("unsupported status %q", s.Meta["status"])
+		result.Errorf("unsupported schema %q; expected %s, where product intent and outcomes live in %s and decisions in %s", s.Meta["schema"], CurrentStateSchema, PlanFilename, DecisionDir)
 	}
 	if _, err := time.Parse(time.RFC3339, s.Meta["updated_at"]); err != nil {
 		result.Errorf("updated_at must be RFC3339: %v", err)
@@ -303,45 +287,14 @@ func (s *State) Validate(budget int) Validation {
 	for _, section := range s.DuplicateSections {
 		result.Errorf("section %q appears more than once", section)
 	}
-	if _, present := s.Sections["Active Decisions"]; present {
-		result.Errorf("section \"Active Decisions\" is not part of schema %s; record each decision as a file in %s", CurrentStateSchema, DecisionDir)
-	}
 	if _, err := s.ContextCapsules(); err != nil {
 		result.Errorf("context capsules: %v", err)
 	}
 	if _, err := s.FactCards(); err != nil {
 		result.Errorf("fact cards: %v", err)
 	}
-	if _, err := s.BlockerCards(); err != nil {
-		result.Errorf("blocker cards: %v", err)
-	}
-	if len(s.Render()) > budget {
-		result.Errorf("state is %d bytes; budget is %d bytes", len(s.Render()), budget)
-	}
-	if active := strings.TrimSpace(s.Meta["active_task"]); active != "" && active != "none" {
-		if !strings.Contains(s.Section("Active Work"), "Task: "+active) {
-			result.Errorf("active_task %q does not match Active Work", active)
-		}
-	}
-	tasks, taskErr := ParseTasks(s.Section("Ready Queue"))
-	if taskErr == nil {
-		active := []string{}
-		for _, task := range tasks {
-			if task.Status == ">" {
-				active = append(active, task.ID)
-			}
-		}
-		declared := strings.TrimSpace(s.Meta["active_task"])
-		if declared == "" || declared == "none" {
-			if len(active) > 0 {
-				result.Errorf("active_task is none but Ready Queue marks %s active", strings.Join(active, ", "))
-			}
-		} else if len(active) != 1 || active[0] != declared {
-			result.Errorf("active_task %q does not match Ready Queue active marker", declared)
-		}
-	}
-	for _, issue := range AnalyzeTasks(s.Section("Ready Queue")) {
-		result.Errorf("task queue: %s", issue)
+	if size := len(s.Render()); size > budget {
+		result.Errorf("state is %d bytes; budget is %d bytes", size, budget)
 	}
 	return result
 }
@@ -350,7 +303,7 @@ func (s *State) Validate(budget int) Validation {
 // in backticks in the durable sections where an agent relies on them as evidence.
 // Existence and change detection are deliberately left to the Git layer.
 func (s *State) EvidencePaths() []string {
-	sections := []string{"Code Map", "Context Capsules", "Known Pitfalls and Failed Approaches", "Active Work"}
+	sections := []string{"Code Map", "Context Capsules", PitfallsSection}
 	seen := map[string]bool{}
 	paths := []string{}
 	for _, section := range sections {
@@ -501,35 +454,6 @@ func (s *State) ContextCapsules() ([]ContextCapsule, error) {
 	return capsules, nil
 }
 
-// ReplaceContextCapsules writes the complete path-indexed capsule set without
-// making callers reimplement the Markdown layout. It is useful for lifecycle
-// code that replaces a generated capsule while preserving user-maintained
-// architecture capsules.
-func (s *State) ReplaceContextCapsules(capsules []ContextCapsule) error {
-	return s.ReplaceSection("Context Capsules", RenderContextCapsules(capsules))
-}
-
-func RenderContextCapsules(capsules []ContextCapsule) string {
-	blocks := make([]string, 0, len(capsules))
-	for _, capsule := range capsules {
-		var builder strings.Builder
-		builder.WriteString("### ")
-		builder.WriteString(strings.TrimSpace(capsule.Name))
-		builder.WriteByte('\n')
-		builder.WriteString("Paths: ")
-		builder.WriteString(strings.Join(capsule.Paths, ", "))
-		builder.WriteByte('\n')
-		builder.WriteString("Summary: ")
-		builder.WriteString(strings.TrimSpace(capsule.Summary))
-		if details := strings.TrimSpace(capsule.Details); details != "" {
-			builder.WriteByte('\n')
-			builder.WriteString(details)
-		}
-		blocks = append(blocks, builder.String())
-	}
-	return strings.Join(blocks, "\n\n")
-}
-
 func parseCapsulePaths(value string) ([]string, error) {
 	if strings.TrimSpace(value) == "" {
 		return nil, errors.New("Paths must name at least one repository-relative path")
@@ -624,12 +548,9 @@ func looksLikePath(value string) bool {
 	return strings.Contains(value, "/") || strings.Contains(filepath.Base(value), ".")
 }
 
-func NewTemplate(path, project, objective string, snapshot GitSnapshot, fingerprint string) *State {
+func NewTemplate(path, project string, snapshot GitSnapshot, fingerprint string) *State {
 	if project == "" {
 		project = filepath.Base(filepath.Dir(path))
-	}
-	if objective == "" {
-		objective = "Record the first approved engineering objective before autonomous work begins."
 	}
 	head := snapshot.Head
 	if head == "" {
@@ -644,45 +565,20 @@ func NewTemplate(path, project, objective string, snapshot GitSnapshot, fingerpr
 		"fingerprint": fingerprint,
 		"branch":      branch,
 		"head":        head,
-		"status":      "ready",
-		"active_task": "none",
 		"updated_at":  time.Now().UTC().Format(time.RFC3339),
 	}
 	body := fmt.Sprintf(`# %s
 
-## Product Intent
-
-%s
-
-## Approved Outcomes
-
-- Delivery plan draft: PROJECT_PLAN.md. No implementation milestone is executable until the user explicitly approves one.
-
-## Active Work
-
-Task: none
-Status: ready
-Mode: strict
-Goal: none
-Acceptance criteria: none
-Immediate next action: Inspect repository facts, complete the delivery-plan intake, and wait for explicit milestone approval.
-Edit scope: none
-Validation: none
-
-## Ready Queue
-
-## Fact Cards
-
-## Blocker Cards
-
 ## Constraints and Approval Boundaries
 
-- Do not invent product outcomes.
+- Work only on outcomes listed in PROJECT_PLAN.md; the user approves every change to that plan.
 - Request approval for destructive actions, production changes, credentials, paid services, or unresolved product choices.
 
 ## Code Map
 
 - Add subsystem, responsibility, repository-relative entry points, and tests as the project becomes known.
+
+## Fact Cards
 
 ## Context Capsules
 
@@ -692,23 +588,15 @@ Validation: none
 
 - Record only failures that remain relevant. Include the failed approach, evidence, resolution, and affected paths.
 
-## Verification
-
-- Record exact commands and their latest known result.
-
-## Recent Material Changes
-
-- State initialized for %s.
-
 ## Handoff
 
-Last completed: state initialization.
-Immediate restart action: Run %s context and %s status, complete the planning interview, and wait for explicit plan approval before claiming implementation work.
-`, project, objective, defaultContextCapsules, project, "continuity", "continuity")
+Last session: state initialized.
+Next step: complete PROJECT_PLAN.md with the user, then work on the active milestone.
+`, project, defaultContextCapsules)
 	return NewState(path, meta, body)
 }
 
 const defaultContextCapsules = `### Project-wide orientation
 Paths: .
 Summary: Durable context is indexed by repository path so a new session can load only what it needs.
-Details: Add short, factual capsules for subsystems or decisions that need more detail than the root index. Do not paste chat transcripts, reasoning traces, or source code.`
+Details: Add short, factual capsules for subsystems that need more detail than the root index; decisions belong in docs/adr. Do not paste chat transcripts, reasoning traces, or source code.`

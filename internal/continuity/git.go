@@ -198,11 +198,32 @@ func ignoredFile(relative string) bool {
 		return true
 	}
 	switch base {
-	case ".git", StateFilename, "AGENTS.md", "CLAUDE.md", "GEMINI.md", "opencode.json", ".gitignore", "README.md":
+	case ".git", StateFilename, PlanFilename, "AGENTS.md", "CLAUDE.md", "GEMINI.md", "opencode.json", ".gitignore", "README.md":
 		return true
 	default:
 		return strings.HasSuffix(base, ".tmp")
 	}
+}
+
+// GitCommonDir returns the directory every linked worktree of a repository
+// shares, where Continuity keeps local, uncommitted session data.
+func GitCommonDir(directory string) (string, error) {
+	root, err := GitRoot(directory)
+	if err != nil {
+		return "", err
+	}
+	output, err := git(root, "rev-parse", "--git-common-dir")
+	if err != nil {
+		return "", err
+	}
+	common := strings.TrimSpace(output)
+	if common == "" {
+		return "", errors.New("Git common directory is empty")
+	}
+	if !filepath.IsAbs(common) {
+		common = filepath.Join(root, common)
+	}
+	return filepath.Clean(common), nil
 }
 
 func LastStateCommit(directory string) string {
@@ -211,11 +232,6 @@ func LastStateCommit(directory string) string {
 		return ""
 	}
 	return strings.TrimSpace(output)
-}
-
-func CommitExists(directory, revision string) bool {
-	_, err := ResolveCommit(directory, revision)
-	return err == nil
 }
 
 func ResolveCommit(directory, revision string) (string, error) {
@@ -227,46 +243,6 @@ func ResolveCommit(directory, revision string) (string, error) {
 		return "", err
 	}
 	return strings.TrimSpace(output), nil
-}
-
-// ChangedPathsBetween returns the repository-relative paths changed by a
-// completed worker result. A claim records its base commit so a task spanning
-// several commits retains all of its changed paths. Older completion records
-// without a base fall back to the final commit's own diff.
-func ChangedPathsBetween(directory, base, commit string) ([]string, error) {
-	resolvedCommit, err := ResolveCommit(directory, commit)
-	if err != nil {
-		return nil, err
-	}
-	var output string
-	if base = strings.TrimSpace(base); base != "" && base != "unborn" {
-		resolvedBase, err := ResolveCommit(directory, base)
-		if err != nil {
-			return nil, fmt.Errorf("resolve task base commit %s: %w", base, err)
-		}
-		output, err = git(directory, "diff", "--name-only", "-z", resolvedBase, resolvedCommit)
-	} else {
-		output, err = git(directory, "diff-tree", "--root", "--no-commit-id", "--name-only", "-r", "-z", resolvedCommit)
-	}
-	if err != nil {
-		return nil, err
-	}
-	paths := []string{}
-	seen := map[string]bool{}
-	for _, value := range strings.Split(output, "\x00") {
-		value = strings.TrimSpace(value)
-		if value == "" {
-			continue
-		}
-		path := filepath.ToSlash(filepath.Clean(value))
-		if path == "." || path == ".." || strings.HasPrefix(path, "../") || seen[path] {
-			continue
-		}
-		seen[path] = true
-		paths = append(paths, path)
-	}
-	sort.Strings(paths)
-	return paths, nil
 }
 
 type CommitMessage struct {
@@ -300,25 +276,6 @@ func RecentCommitMessages(directory string, limit int, paths ...string) ([]Commi
 		messages = append(messages, CommitMessage{Hash: fields[0], Date: fields[1], Subject: fields[2], Body: strings.TrimSpace(fields[3])})
 	}
 	return messages, nil
-}
-
-// CommitIsAncestor reports whether revision has been integrated into the
-// current checkout's HEAD. A false result with no error is an ordinary
-// non-ancestor, not a Git failure.
-func CommitIsAncestor(directory, revision string) (bool, error) {
-	command := exec.Command("git", "merge-base", "--is-ancestor", revision, "HEAD")
-	command.Dir = directory
-	var stderr bytes.Buffer
-	command.Stderr = &stderr
-	err := command.Run()
-	if err == nil {
-		return true, nil
-	}
-	var exitErr *exec.ExitError
-	if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
-		return false, nil
-	}
-	return false, fmt.Errorf("git merge-base --is-ancestor %s HEAD: %s", revision, strings.TrimSpace(stderr.String()))
 }
 
 // CommitFiles records a small, explicitly approved metadata change immediately

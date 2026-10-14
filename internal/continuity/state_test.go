@@ -9,7 +9,7 @@ import (
 
 func TestStateRoundTripAndSectionReplacement(t *testing.T) {
 	path := filepath.Join(t.TempDir(), StateFilename)
-	state := NewTemplate(path, "Example", "Build a reliable workflow.", GitSnapshot{Branch: "main"}, "sha256:before")
+	state := NewTemplate(path, "Example", GitSnapshot{Branch: "main"}, "sha256:before")
 	if err := state.Save(); err != nil {
 		t.Fatal(err)
 	}
@@ -20,7 +20,7 @@ func TestStateRoundTripAndSectionReplacement(t *testing.T) {
 	if result := loaded.Validate(DefaultStateBudget); !result.OK() {
 		t.Fatalf("unexpected validation errors: %v", result.Errors)
 	}
-	if err := loaded.ReplaceSection("Handoff", "Last completed: test\nImmediate restart action: continue"); err != nil {
+	if err := loaded.ReplaceSection("Handoff", "Last completed: test\nNext step: continue"); err != nil {
 		t.Fatal(err)
 	}
 	if got := loaded.Section("Handoff"); !strings.Contains(got, "Last completed: test") {
@@ -33,7 +33,7 @@ func TestStateRoundTripAndSectionReplacement(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := reloaded.Section("Handoff"); !strings.Contains(got, "Immediate restart action: continue") {
+	if got := reloaded.Section("Handoff"); !strings.Contains(got, "Next step: continue") {
 		t.Fatalf("replacement did not persist: %q", got)
 	}
 }
@@ -91,14 +91,14 @@ func TestEvidencePathsUsesOnlyDurablePathAnchors(t *testing.T) {
 		"## Active Work\n\n"+
 		"Edit scope: `internal/continuity`.\n")
 	got := strings.Join(state.EvidencePaths(), ",")
-	want := "cmd/continuity,internal/continuity,internal/continuity/state.go"
+	want := "cmd/continuity,internal/continuity/state.go"
 	if got != want {
 		t.Fatalf("evidence paths = %q, want %q", got, want)
 	}
 }
 
 func TestContextCapsulesSelectRelevantScopes(t *testing.T) {
-	state := NewTemplate("PROJECT_STATE.md", "Example", "Test capsule selection.", GitSnapshot{}, "sha256:test")
+	state := NewTemplate("PROJECT_STATE.md", "Example", GitSnapshot{}, "sha256:test")
 	if err := state.ReplaceSection("Context Capsules", strings.Join([]string{
 		"### Project-wide orientation",
 		"Paths: .",
@@ -135,31 +135,13 @@ func TestContextCapsulesSelectRelevantScopes(t *testing.T) {
 }
 
 func TestContextCapsulesRejectMalformedPaths(t *testing.T) {
-	state := NewTemplate("PROJECT_STATE.md", "Example", "Test malformed capsule.", GitSnapshot{}, "sha256:test")
+	state := NewTemplate("PROJECT_STATE.md", "Example", GitSnapshot{}, "sha256:test")
 	if err := state.ReplaceSection("Context Capsules", "### Escaping capsule\nPaths: ../secret\nSummary: Invalid path."); err != nil {
 		t.Fatal(err)
 	}
 	result := state.Validate(DefaultStateBudget)
 	if result.OK() || !strings.Contains(strings.Join(result.Errors, "\n"), "escapes the repository") {
 		t.Fatalf("malformed capsule accepted: %#v", result)
-	}
-}
-
-func TestReplaceContextCapsulesPreservesStructuredRecords(t *testing.T) {
-	state := NewTemplate("PROJECT_STATE.md", "Example", "Test capsule replacement.", GitSnapshot{}, "sha256:test")
-	capsules := []ContextCapsule{
-		{Name: "Architecture", Paths: []string{"internal/continuity"}, Summary: "Core state behavior.", Details: "Details: Keep the parser bounded."},
-		{Name: "Change T-001", Paths: []string{"cmd/continuity"}, Summary: "Intent: Add lifecycle command.", Details: "Details: Commit: abc123\nChanged paths: cmd/continuity/main.go\nValidation: go test: pass\nNext: T-002"},
-	}
-	if err := state.ReplaceContextCapsules(capsules); err != nil {
-		t.Fatal(err)
-	}
-	parsed, err := state.ContextCapsules()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(parsed) != 2 || parsed[1].Name != "Change T-001" || !strings.Contains(parsed[1].Details, "Validation: go test: pass") {
-		t.Fatalf("capsules did not round trip: %#v", parsed)
 	}
 }
 
@@ -173,7 +155,7 @@ func TestDefaultStateBudgetApproximatesThirtyThousandTokens(t *testing.T) {
 }
 
 func TestDefaultStateBudgetSupportsLargeDurableCapsules(t *testing.T) {
-	state := NewTemplate("PROJECT_STATE.md", "Example", "Test durable capacity.", GitSnapshot{}, "sha256:test")
+	state := NewTemplate("PROJECT_STATE.md", "Example", GitSnapshot{}, "sha256:test")
 	if err := state.ReplaceSection("Context Capsules", "### Large architecture record\nPaths: internal\nSummary: A bounded large durable record.\nDetails: "+strings.Repeat("x", 100_000)); err != nil {
 		t.Fatal(err)
 	}
@@ -189,7 +171,7 @@ func TestDefaultStateBudgetSupportsLargeDurableCapsules(t *testing.T) {
 }
 
 func TestStateValidationRequiresCurrentSchema(t *testing.T) {
-	state := NewTemplate("PROJECT_STATE.md", "Example", "Test current schema.", GitSnapshot{}, "sha256:test")
+	state := NewTemplate("PROJECT_STATE.md", "Example", GitSnapshot{}, "sha256:test")
 	state.SetMeta("schema", "1")
 	result := state.Validate(DefaultStateBudget)
 	if result.OK() || !strings.Contains(strings.Join(result.Errors, "\n"), "expected "+CurrentStateSchema) {
@@ -199,8 +181,8 @@ func TestStateValidationRequiresCurrentSchema(t *testing.T) {
 
 func TestStateValidationRejectsDuplicateSections(t *testing.T) {
 	state := NewState("PROJECT_STATE.md", map[string]string{
-		"schema": CurrentStateSchema, "fingerprint": "sha256:test", "branch": "main", "head": "unborn", "status": "ready", "active_task": "none", "updated_at": "2026-07-30T00:00:00Z",
-	}, "## Product Intent\n\nfirst\n\n## Product Intent\n\nsecond\n")
+		"schema": CurrentStateSchema, "fingerprint": "sha256:test", "branch": "main", "head": "unborn", "updated_at": "2026-07-30T00:00:00Z",
+	}, "## Handoff\n\nfirst\n\n## Handoff\n\nsecond\n")
 	result := state.Validate(DefaultStateBudget)
 	if result.OK() || !strings.Contains(strings.Join(result.Errors, "\n"), "appears more than once") {
 		t.Fatalf("duplicate section was accepted: %#v", result)

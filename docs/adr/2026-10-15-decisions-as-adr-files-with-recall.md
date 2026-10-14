@@ -19,7 +19,7 @@
 ## Decision
 
 - Each decision is one Markdown file in `docs/adr/`, named by date, with `Date`, `Paths`, and optional `Supersedes` fields. A record is current until a later record supersedes it; no status field is stored.
-- `PROJECT_STATE.md` stays the compact project index; live claim ownership stays outside committed files, as before.
+- `PROJECT_STATE.md` stays the compact project index.
 - The restart packet lists the titles of current decisions. Claude Code and Codex hooks show the decisions and pitfalls linked to a file when the agent reads or edits it, once per session. `continuity recall` searches decisions, pitfalls, facts, history, and commit messages.
 - The agent in the conversation records decisions when the user states or approves them; no extra model reads transcripts.
 

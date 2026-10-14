@@ -13,18 +13,24 @@ import (
 // A hook shows each path-linked memory record once per session. The keys of
 // shown records live in Git's common directory with one file per session, so
 // concurrent sessions never write the same file.
-const shownRecordsDirectory = "sessions"
+func shownRecordsDirectory(directory string) (string, error) {
+	common, err := GitCommonDir(directory)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(common, "continuity", "sessions"), nil
+}
 
 func shownRecordsPath(directory, owner string) (string, error) {
 	if strings.TrimSpace(owner) == "" {
 		return "", errors.New("a session identity is required to track shown records")
 	}
-	store, err := CoordinationRoot(directory)
+	sessions, err := shownRecordsDirectory(directory)
 	if err != nil {
 		return "", err
 	}
 	sum := sha256.Sum256([]byte(owner))
-	return filepath.Join(store, shownRecordsDirectory, hex.EncodeToString(sum[:8])), nil
+	return filepath.Join(sessions, hex.EncodeToString(sum[:8])), nil
 }
 
 func LoadShownRecords(directory, owner string) (map[string]bool, error) {
@@ -85,11 +91,10 @@ func ResetShownRecords(directory, owner string) error {
 
 // PruneShownRecords removes the files of sessions inactive for longer than age.
 func PruneShownRecords(directory string, age time.Duration) error {
-	store, err := CoordinationRoot(directory)
+	sessions, err := shownRecordsDirectory(directory)
 	if err != nil {
 		return err
 	}
-	sessions := filepath.Join(store, shownRecordsDirectory)
 	entries, err := os.ReadDir(sessions)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil

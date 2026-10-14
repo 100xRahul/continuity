@@ -1,143 +1,48 @@
 ---
-schema: 3
-fingerprint: sha256:b45f1aaaece3c897809a1ec641f950d770a43c3505bf86534a49d3cd9259cec4
-branch: main
-head: 1d9855546911f744136395f8cb721bad18a354e3
-status: ready
-active_task: none
-updated_at: 2026-10-14T18:30:08Z
+schema: 4
+fingerprint: sha256:0c3442dd785ddc152e65c254b06576a0f07aa93b5836121959e56f26b904179c
+branch: t-017-decision-recall
+head: f41b836cda389f5610c0e577af2ee19311f9f350
+updated_at: 2026-10-14T19:09:16Z
 ---
 
 # Continuity
 
-## Product Intent
-
-Build a durable, cross-harness continuity system for AI coding agents.
-
-## Approved Outcomes
-
-- Deliver a dependency-free Go CLI that maintains and validates a compact Git-backed project state.
-- Deliver one shared continuity protocol and skill with adapters for Codex, Claude Code, Cursor, GitHub Copilot CLI, Gemini CLI, and OpenCode.
-- Prove recovery from fresh sessions, stale state, changed source, and task dependencies through automated tests and real CLI checks.
-- Deliver safe same-machine multi-session coordination: agents must see live task claims before editing, and separate worktrees must not duplicate or silently conflict on work.
-- Scale durable project knowledge to an approximately 30,000-token budget while keeping routine session context selective and compact.
-- Provide an optional Worktrunk bridge for parallel Git worktrees without making Worktrunk a core dependency.
-- Deliver a structured, user-approved project plan that lets agents decompose and continue approved implementation work without inventing product scope.
-
-## Active Work
-Task: none
-Status: ready
-Mode: strict
-Goal: none
-Acceptance criteria: none
-Immediate next action: Run continuity status. Live worker ownership is recorded in the local coordination store, not in this shared project index.
-Edit scope: none
-Validation: none
-## Ready Queue
-- [x] T-001 | Implement the portable state engine and lifecycle CLI | depends: none | autonomous: yes | accepts: State parser, source fingerprinting, task readiness, lifecycle commands, and focused tests pass.
-- [x] T-002 | Add shared instructions, skill, and harness adapters | depends: T-001 | autonomous: yes | accepts: Every target harness has a repository adapter pointing to the shared state and workflow.
-- [x] T-003 | Verify state recovery, freshness, and task-graph behavior | depends: T-002 | autonomous: yes | accepts: Unit and command-level checks prove stale-state detection, recovery guidance, and task dependency behavior.
-- [x] T-004 | Complete installation workflow, fresh-repository scaffolding, and documentation | depends: T-003 | autonomous: yes | accepts: Init scaffolds missing shared adapters without overwriting instructions, and README explains install, workflow, safety model, and adapter boundaries.
-- [x] T-005 | Add post-commit metadata synchronization | depends: T-004 | autonomous: yes | accepts: A sync command records the current Git branch, HEAD, fingerprint, and timestamp without altering task state.
-- [x] T-006 | Build safe multi-session coordination | depends: T-005 | autonomous: yes | accepts: Concurrent local sessions receive a bounded shared status signal, claims are exclusive across worktrees, unsafe same-worktree writes are rejected, and adversarial tests cover races and state integrity.
-- [x] T-007 | Add layered 30k-token durable context | depends: T-006 | autonomous: yes | accepts: The portable core supports an approximately 30k-token durable budget, indexed context capsules, bounded scope-based selection, and tests proving startup context stays selective.
-- [x] T-008 | Add optional Worktrunk bridge and branch safety | depends: T-007 | autonomous: yes | accepts: Active writer claims reject a shared branch, and the project provides tested optional Worktrunk hooks or guidance that bootstrap bounded context and claims without requiring Worktrunk.
-- [x] T-009 | Refresh handoff during integration | depends: T-008 | autonomous: yes | accepts: Integration updates the durable handoff with the completed task and a safe next-session action, with focused tests.
-- [x] T-010 | Add structured project intake and approved-plan lifecycle | depends: T-009 | autonomous: yes | accepts: PROJECT_PLAN.md drafts, validation, explicit approval, milestone activation, and plan deltas work through the portable CLI with focused tests.
-- [x] T-011 | Add outcome-linked autonomous task graph | depends: T-010 | autonomous: yes | accepts: Tasks require active approved outcomes and focused contracts, and agents can choose and claim valid ready work with recorded rationale.
-- [x] T-012 | Add automatic change capsules and context archives | depends: T-011 | autonomous: yes | accepts: Integration derives evidence-backed task capsules, projects relevant context, and archives completed milestone history without bloating active prompts.
-- [x] T-013 | Add policy gates and source-linked fact aging | depends: T-012 | autonomous: yes | accepts: Configured scoped policy checks gate verification, affected facts refresh automatically, and meaningful stalls raise durable blocker cards.
-- [x] T-014 | Audit and harden existing continuity implementation | depends: none | autonomous: yes | accepts: Existing behavior is audited against the original intent; only evidenced defects are corrected; focused tests, race tests, and vet pass.
-- [x] T-015 | Align generated handoffs with restart index | depends: T-014 | autonomous: yes | accepts: Generated no-work and next-task handoffs direct fresh agents through continuity context without restoring redundant startup commands.
-- [x] T-016 | Harden bounded context and state density | depends: T-015 | autonomous: yes | accepts: Cold-start context never hides gates or recommends blocked work, durable state compacts repetitive history without losing archives, and AGENTS.md remains a minimal cross-harness bootloader.
-- [ ] T-017 | Make past decisions known to every new session | depends: none | autonomous: yes | accepts: Decisions live as ADR files in docs/adr; continuity context lists current decisions and omits superseded ones; Claude Code and Codex hooks show decisions linked to a touched file once per session; continuity recall finds decisions, pitfalls, history, and commit messages; focused tests, race tests, and vet pass.
-## Fact Cards
-
-- [fresh] F-001 | source: docs/adr/2026-07-31-facts-blockers-policies-as-gates.md | paths: cmd/continuity/governance.go, cmd/continuity/policy.go, internal/continuity/facts.go | verified: 2026-07-30T18:34:30Z | evidence: T-013 automated checks and portable CLI smoke passed. | summary: Evidence gates are implemented through committed Markdown and the portable CLI.
-
-## Blocker Cards
-
 ## Constraints and Approval Boundaries
 
-- Do not invent product outcomes.
+- Do not invent product outcomes; work only on outcomes in PROJECT_PLAN.md, and the user approves every change to the plan.
 - Request approval for destructive actions, production changes, credentials, paid services, or unresolved product choices.
 - Do not require one vendor's hooks, memory, plugin, MCP support, or cloud service for correct continuation.
 - Keep the state current and bounded; do not store raw chats, reasoning traces, or pasted source code.
-- Require explicit user approval before adding an executable policy command to `CONTINUITY_POLICY.md`.
 
 ## Code Map
 
-- CLI command routing — `cmd/continuity/main.go` — parses lifecycle commands, explicitly approved task bootstrap, state/Git facts, and on-demand `compact`.
-- Live coordination commands — `cmd/continuity/coordination.go` — priority-structured context packets, branch-aware claims, evidence-backed lifecycle integration, gate-safe next-work handoffs, and Codex hook output.
-- History lifecycle — `cmd/continuity/history.go` — deterministic active-state compaction, bounded change capsules, full change/outcome/milestone archive records, next-work selection, and archive-safe receipts.
-- State engine — `internal/continuity/state.go` — Markdown front matter, sections, approximately 30k-token validation, path-indexed Context Capsules, structured capsule replacement, templates, and atomic writes.
-- Git facts — `internal/continuity/git.go` — repository snapshots, source fingerprints, incremental reconciliation, and claimed-range changed-path derivation.
-- Coordination store — `internal/continuity/coordination.go` — common-Git-directory claims, heartbeats, branch and scope exclusion, pending completions, and explicit stale recovery.
-- Task graph — `internal/continuity/tasks.go`, `cmd/continuity/main.go` — legacy and outcome-bound task contracts, scope/validation enforcement, derived technical task records, dependency readiness, and evidence-ranked next-task selection.
-- Delivery plan — `internal/continuity/plan.go`, `cmd/continuity/plan.go` — structured Markdown roadmap, sources, outcomes, decisions, explicit approval, evidence-backed outcome completion, milestone archiving, and plan deltas.
-- Evidence gates — `internal/continuity/facts.go`, `internal/continuity/policy.go`, `cmd/continuity/governance.go`, `cmd/continuity/policy.go` — source-linked fact aging, durable blocker cards, explicitly approved scoped finalization checks, and gate-aware handoffs.
-- Adapter installer — `internal/continuity/adapters.go` — non-overwriting scaffolding, idempotent marked text bridges, and schema-aware Codex/OpenCode merges that connect existing harness configuration to the shared protocol.
-- Codex adapter — `.codex/hooks.json`, `.agents/hooks/continuity.sh` — optional session context and pre-write guardrails after project trust; the shared script runs `continuity hook <harness> <phase>`.
-- Tests — `internal/continuity/*_test.go` — state round trip, fingerprint exclusions, task readiness, and cycles.
+- Commands and index maintenance — `cmd/continuity/main.go` — init, check, reconcile, sync, brief, and shared helpers.
+- Restart packet — `cmd/continuity/context.go` — critical block, plan Next, handoff, current decision titles, capsules, and byte-bounded assembly.
+- Recall — `cmd/continuity/recall.go`, `internal/continuity/search.go` — BM25 keyword search over durable memory and path-linked recall.
+- Harness hooks — `cmd/continuity/hook.go`, `internal/continuity/shown.go`, `.agents/hooks/continuity.sh` — session-start packet and once-per-session path-linked records for Claude Code and Codex.
+- Facts — `cmd/continuity/facts.go`, `internal/continuity/facts.go` — source-linked facts that age when their paths change.
+- Decision records — `internal/continuity/decisions.go`, `docs/adr` — ADR parsing, supersession, and validation.
+- Plan — `internal/continuity/plan.go` — Intent, Milestones, Outcomes, and the active milestone's open outcomes.
+- State engine — `internal/continuity/state.go` — schema 4 sections, capsules, validation, and atomic writes.
+- Git facts — `internal/continuity/git.go` — fingerprint, changes since the last sync, and commit messages.
+- Adapter installer — `internal/continuity/adapters.go` — non-overwriting scaffolding, marked bridges, and hook-config merges for Claude Code and Codex.
+- Tests — `cmd/continuity/*_test.go`, `internal/continuity/*_test.go`.
 
+## Fact Cards
+- [stale] F-001 | source: docs/adr/2026-10-15-keep-facts-drop-blockers-and-policies.md | paths: cmd/continuity/facts.go, internal/continuity/facts.go | verified: 2026-10-14T19:08:58Z | evidence: TestSyncAgesFactUntilAReviewConfirmsIt and TestFactCardsAgeOnlyOverlappingFreshEvidence passed. | summary: Facts age when their source paths change and become fresh again only through continuity fact confirm.
 ## Context Capsules
+
 ### Project-wide orientation
 Paths: .
-Summary: Continuity stores durable project meaning in a larger bounded index but starts new work from a small, selective context packet.
-Details: Read the project-wide orientation on every new session. Use a task's scope or `continuity context --scope path/to/area` to load deeper capsules instead of reading the entire durable index.
+Summary: Continuity is local project memory: PROJECT_PLAN.md says what to build next, docs/adr holds decisions, and PROJECT_STATE.md indexes code, facts, pitfalls, and the last handoff.
+Details: Hooks and continuity context deliver selected parts at session start; continuity recall searches the rest. Parallel agents run in Orca or separate worktrees; Continuity does not coordinate writers.
 
-### Continuity architecture
-Paths: .agents/skills, .codex, AGENTS.md, README.md, cmd/continuity, internal/continuity
-Summary: The portable core separates committed project knowledge from local live coordination; harness adapters may inject bounded context but never own the durable state.
-Details: Use this capsule when changing state, task lifecycle, context selection, claims, adapters, or repository instructions. Keep project-wide facts in the durable index and place larger subsystem-specific facts in a capsule with explicit paths.
+### Memory delivery
+Paths: cmd/continuity/context.go, cmd/continuity/hook.go, cmd/continuity/recall.go, internal/continuity/search.go, internal/continuity/shown.go
+Summary: Decision titles are always loaded; path-linked decisions, pitfalls, and facts appear once per session when a file is used; keyword recall covers everything else.
+Details: Measured before this design, a new session saw 0 of 15 decisions. BM25 with the Harman S-stemmer found the right record in the top 3 for 11 of 12 test questions. Automatic search on every prompt was rejected because an unrelated prompt outscored real matches. See docs/adr/2026-10-15-decisions-as-adr-files-with-recall.md.
 
-### Parallel worktree bridge
-Paths: .agents/worktrunk, AGENTS.md, cmd/continuity/coordination.go, cmd/continuity/main.go, internal/continuity/coordination.go
-Summary: Worktrunk is optional; the portable core prevents concurrent writers from sharing a worktree or named branch.
-Details: The optional Worktrunk `pre-start` template only prints bounded orientation and live ownership. Start the real harness in its worktree first, then claim with that session's identity and a narrow scope. A user-approved task can be added only through the explicit pre-claim `continuity task add --approved` route; never infer one.
-
-### Integration handoff
-Paths: PROJECT_STATE.md, cmd/continuity/coordination.go
-Summary: A successful integration derives changed paths, records a permanent archive, and makes the durable handoff point to the highest-ranked actual next action.
-Details: Integration remains the only lifecycle step that makes a result durable; it updates task status, verification, recent changes, a bounded Change capsule, and handoff together. If no task is ready but an active outcome's linked tasks are all integrated, the next action is outcome verification and `continuity plan outcome complete`, not invented work.
-
-### Delivery planning
-Paths: AGENTS.md, PROJECT_HISTORY, PROJECT_PLAN.md, cmd/continuity/plan.go, internal/continuity/plan.go
-Summary: A draft plan captures distilled project facts; explicit user approval activates only the nearest executable milestone.
-Details: Interview the user one decision at a time only where repository inspection cannot answer. Record compact sources, assumptions, and decision cards instead of raw chat. High-impact unresolved decisions affecting the milestone block approval. Keep later roadmap work visible but non-executable until activation.
-After approval, an implementation task must name an active outcome, remain within its scope, and carry focused validation. `continuity ready` presents priority and direct-unblocking evidence; the claimant records why it selected that task. A derived technical task is allowed only from an unclaimed integration checkout and is committed immediately. When all linked tasks are integrated, `plan outcome complete` commits its verification receipt; activating a later milestone snapshots the completed outcome set under `PROJECT_HISTORY/`.
-
-### Evidence gates
-Paths: .agents/skills/project-continuity, AGENTS.md, README.md, cmd/continuity, internal/continuity
-Summary: Facts, blockers, and policies make changing evidence or stalled work visible across harnesses without relying on chat memory.
-Details: A Fact Card names its source paths and becomes stale, never silently rewritten, when those paths change during synchronization, plan or policy update, or integration. Overlapping work waits for an explicit `fact confirm` review receipt. A Blocker Card records a falsifiable hypothesis, evidence, and next action; repeat attempts need new evidence or a new hypothesis. `CONTINUITY_POLICY.md` contains only explicitly user-approved scoped checks, which run before finalization and checkpoint rather than complete on failure.
-
-### Change T-014
-Paths: .agents/skills/project-continuity, .agents/worktrunk, AGENTS.md, PROJECT_STATE.md, README.md, cmd/continuity, internal/continuity
-Summary: Intent: Audit and harden existing continuity implementation | Result: Streamlined session resumption, safe owner renewal, and mature-repository adapter integration.
-Details: Commit: d33998bc58396873050ca6425f480583cb0368d9
-Changed paths: .agents/skills/project-continuity/SKILL.md, .agents/worktrunk/README.md, AGENTS.md, PROJECT_STATE.md, README.md, cmd/continuity/coordination.go, cmd/continuity/main_test.go, internal/continuity/adapters.go (+1 more)
-Validation: go test ./... -count=1: pass; go test -race ./... -count=1: pass; go vet ./...: pass
-Next: No unclaimed autonomous task is ready.
-Archive: PROJECT_HISTORY/changes/T-014.md
-
-### Change T-015
-Paths: PROJECT_STATE.md, cmd/continuity/history.go, cmd/continuity/history_test.go
-Summary: Intent: Align generated handoffs with restart index | Result: Aligned generated handoffs with the single restart index.
-Details: Commit: 16e265803e8a6502fc9e007ca37b3ca38a7d2c4e
-Changed paths: PROJECT_STATE.md, cmd/continuity/history.go, cmd/continuity/history_test.go
-Validation: go test ./... -count=1: pass; go test -race ./... -count=1: pass; go vet ./...: pass
-Next: No unclaimed autonomous task is ready.
-Archive: PROJECT_HISTORY/changes/T-015.md
-
-### Change T-016
-Paths: .agents/skills/project-continuity, .agents/skills/project-continuity/references, AGENTS.md, PROJECT_STATE.md, README.md, cmd/continuity, internal/continuity
-Summary: Intent: Harden bounded context and state density | Result: Made restart context gate-safe, compacted archive-backed operational history, and reduced AGENTS to a bootloader.
-Details: Commit: 9fcecce0fef63db55c3c1ab80a63d485361030aa
-Changed paths: .agents/skills/project-continuity/SKILL.md, .agents/skills/project-continuity/references/state-schema.md, AGENTS.md, PROJECT_STATE.md, README.md, cmd/continuity/coordination.go, cmd/continuity/history.go, cmd/continuity/history_test.go (+4 more)
-Validation: go test ./... -count=1: pass; go test -race ./... -count=1: pass; go vet ./...: pass
-Next: No unclaimed autonomous task is ready.
-Archive: PROJECT_HISTORY/changes/T-016.md
 ## Known Pitfalls and Failed Approaches
 
 - Record only failures that remain relevant. Include the failed approach, evidence, resolution, and affected paths.
@@ -145,49 +50,16 @@ Archive: PROJECT_HISTORY/changes/T-016.md
 - Exclude every generated harness adapter, including `opencode.json`, from the source fingerprint; otherwise a new initialized repository is stale immediately. Evidence: `internal/continuity/git.go`, `cmd/continuity/init_test.go`.
 - Do not use a fixed `PROJECT_STATE.md.tmp` name for atomic writes. Concurrent processes can rename or remove each other's temporary file; use a unique same-directory temporary file and rename it atomically. Evidence: `internal/continuity/state.go`, `internal/continuity/coordination_test.go`.
 - Do not walk linked-worktree `.git` metadata when fingerprinting. Its pointer file contains worktree-specific paths and creates false staleness; derive files through `git ls-files` instead. Evidence: `internal/continuity/git.go`, `internal/continuity/coordination_test.go`.
-- Do not place unchecked multiline lifecycle text in Markdown state. It can forge a second heading or queue entry; claims, checkpoints, and completions accept only one-line fields. Evidence: `cmd/continuity/main.go`, `internal/continuity/coordination.go`.
-- Do not let multiple Codex child agents write one parent checkout. They share the parent's hook session ID; use separate worktrees for independent writers. Evidence: `AGENTS.md`, `.codex/hooks.json`.
-- Do not treat separate paths or worktrees as safe when writers share a named branch. The live claim board rejects a second writer on that branch; create a dedicated branch before claiming work. Evidence: `internal/continuity/coordination.go`, `cmd/continuity/main.go`.
-- Do not leave a completed task's handoff pointing at older work. The integration command updates the task status, evidence, recent changes, and restart instruction together. Evidence: `cmd/continuity/coordination.go`, `cmd/continuity/main_test.go`.
-- Do not treat a plausible draft as product approval. Only `continuity plan approve --approved --milestone ...` records an immediate Git-backed executable boundary; unapproved plan content cannot authorize implementation. Evidence: `cmd/continuity/plan.go`, `cmd/continuity/plan_test.go`.
 - Do not equate the approximately 30k-token durable budget with routine context size. The full index is deliberate-review material; startup and task context must select only project-wide and scope-relevant capsules. Evidence: `cmd/continuity/coordination.go`, `AGENTS.md`.
-- Do not seed a reusable task ID into a fresh draft queue. The placeholder `T-001` collided with the first natural real task; keep the queue empty until the approved plan supplies a real contract. Evidence: `internal/continuity/state.go`, `cmd/continuity/taskgraph_test.go`.
-- Do not make a new session rediscover a completed claim from its code diff. Integration must retain claimed-range paths, task intent, validation evidence, and the selected next action in a short capsule plus `PROJECT_HISTORY/changes/` archive. Evidence: `cmd/continuity/history.go`, `cmd/continuity/main_test.go`.
-- Do not derive another task merely because a completed active outcome has no ready task. Verify its acceptance and record `plan outcome complete`; the command refuses while any linked task remains unintegrated. Evidence: `cmd/continuity/history.go`, `cmd/continuity/plan.go`, `cmd/continuity/plan_test.go`.
-- Do not silently refresh a fact after its named source changes or retry a stalled task with the same evidence. Synchronize to mark affected facts stale, explicitly confirm review evidence, and resolve blockers only with new evidence or a new hypothesis. Evidence: `cmd/continuity/governance.go`, `internal/continuity/facts.go`.
-- Do not let an ignored fingerprint path bypass fact aging. Claim and check flows separately inspect changed source-linked paths, including project instructions such as `README.md`. Evidence: `cmd/continuity/main.go`, `cmd/continuity/governance_test.go`.
 - Do not equate preserving an existing harness instruction file with integrating Continuity. Preserve its content byte-for-byte and append one idempotent marked bridge when it does not already reference the shared protocol. Evidence: `internal/continuity/adapters.go`.
-- Do not byte-truncate a restart packet or let archive-backed repetition grow without a retention rule. Keep its safety block whole, omit optional sections structurally, and compact only history recoverable from Git or committed archives. Evidence: `cmd/continuity/coordination.go`, `cmd/continuity/history.go`.
-- Do not let state-size overflow refuse the commands that would shrink it. The compactor runs inside `integrate`, so blocking `ready`, `task add`, `start`, or `integrate` on overflow deadlocked the repository; overflow now warns there, `check` still fails, and `continuity compact` trims on demand. Evidence: `cmd/continuity/main.go`, `cmd/continuity/coordination.go`.
-- Do not let one unreadable claim record disable the claim store. Listing skips and reports damaged records so `status` and stale recovery keep working, while granting a claim still fails closed because exclusivity is unprovable. Evidence: `internal/continuity/coordination.go`.
-- Do not widen a claim or invent an owner from bad input. An empty or placeholder scope element is rejected instead of becoming `.`, and `start` and `checkpoint` require an explicit owner because a process-derived identity cannot be addressed by the next session. Evidence: `internal/continuity/coordination.go`, `cmd/continuity/main.go`.
+- Do not write unchecked multiline text into state records. It can forge a second heading or record; fact fields accept one line each. Evidence: `cmd/continuity/main.go`, `internal/continuity/facts.go`.
+- Do not silently refresh a fact after its source changes. Sync marks affected facts stale, and only `continuity fact confirm` with new review evidence makes one fresh. Evidence: `cmd/continuity/facts.go`, `internal/continuity/facts.go`.
+- Do not let an ignored fingerprint path bypass fact aging. `check` and fact writes inspect changed source-linked paths separately, including instruction files such as `README.md`. Evidence: `cmd/continuity/main.go`, `cmd/continuity/facts.go`.
+- Do not byte-truncate the restart packet. Keep its critical block whole and condense or omit later sections structurally. Evidence: `cmd/continuity/context.go`.
+- Do not treat a backticked `.` in a pitfall as an evidence path; it linked the pitfall to every file. Evidence: `internal/continuity/state.go`.
+- Do not rely on Claude Code reading AGENTS.md: when a CLAUDE.md exists, Claude Code reads only CLAUDE.md, so CLAUDE.md must import `@AGENTS.md`. Evidence: `CLAUDE.md`, `internal/continuity/adapters.go`.
 
-## Verification
-- git diff --check: pass
-- fresh init, check, 1800-byte context, and compact AGENTS smoke: pass
-- hook shell and JSON validation: pass
-- go vet ./...: pass
-- go test -race ./... -count=1: pass
-- go test ./... -count=1: pass
-- existing-repository init smoke: preserved policy and merged Codex/OpenCode adapters
-- sh -n .codex/hooks/continuity.sh: pass
-- governance CLI smoke: pass
-- fresh change-history lifecycle smoke: pass
-- clean task-graph CLI smoke: pass
-- Fresh init-to-approval CLI smoke: pass
-## Recent Material Changes
-- Integrated T-016 at 9fcecce0fef63db55c3c1ab80a63d485361030aa: Made restart context gate-safe, compacted archive-backed operational history, and reduced AGENTS to a bootloader.
-- Integrated T-015 at 16e265803e8a6502fc9e007ca37b3ca38a7d2c4e: Aligned generated handoffs with the single restart index.
-- Integrated T-014 at d33998bc58396873050ca6425f480583cb0368d9: Streamlined session resumption, safe owner renewal, and mature-repository adapter integration.
-- Integrated T-013 at c2543810461558812ff1aee1e55f6f99e6d3930b: Added portable policy gates, fact aging, and durable blockers.
-- Integrated T-012 at 23ba7b898505f535687b34792ce9ee74ad220047: Added evidence-backed change capsules, archives, and outcome history.
-- Integrated T-011 at b5aa35e6fade25fda72db7dead201dcc859843c6: Added outcome-bound task contracts, evidence-ranked ready work, derived technical task receipts, and selection rationale.
-- Integrated T-010 at 9e45630ac944af7223a07ba192a04f0532e47594: Added structured project-plan intake, explicit approval receipts, milestone activation, plan deltas, and scoped startup projection.
-- Integrated T-009 at 4dc3561f759d76c358192f53db5d2325e111953f: Made integration refresh the durable handoff with the completed task and safe next-session action.
-- Integrated T-008 at 62261c78c5253907df7f3e913a867369f6f7ab62: Added optional Worktrunk orientation templates, branch-exclusive live claims, and explicit approved-task bootstrap.
-- Integrated T-007 at 259d2a238a309e2a08f64a39a929ad600f554339: Added schema-2 30k-token durable capsules with selective bounded context and no migration path.
-- Integrated T-006 at 667498ef75cbec10d4a2caeb99b0f6d722f2cc82: Implemented bounded same-machine multi-session coordination with exclusive claims, safe lifecycle integration, and Codex live-context hooks.
-- Completed T-005: Added and verified post-commit metadata synchronization; the command refreshes branch, HEAD, fingerprint, and timestamp without altering task state.
 ## Handoff
-Last completed: T-016 — Made restart context gate-safe, compacted archive-backed operational history, and reduced AGENTS to a bootloader.
-Immediate restart action: Run continuity context and wait for user-approved work before changing product scope.
+
+Last session (2026-10-15): decisions became ADR files in docs/adr, shown at session start and on file use, with continuity recall for search; claims, the task lifecycle, blockers, policies, and the Worktrunk bridge were removed, and the plan was reduced to Intent, Milestones, and Outcomes.
+Next step: outcome O-007 — install the rebuilt continuity binary on every machine that runs agents (this Mac and the Orca VPS), approve the project hooks in Claude Code with /hooks and trust them in Codex, then open a fresh session and confirm it shows the decisions and Next without re-explaining.

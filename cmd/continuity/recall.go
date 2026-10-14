@@ -17,6 +17,10 @@ import (
 // decisions belong in docs/adr, not only in commit messages.
 const recallCommitLimit = 1000
 
+// historyDir holds change archives that earlier versions wrote; recall still
+// searches them.
+const historyDir = "PROJECT_HISTORY"
+
 func recallCommand(args []string) error {
 	flags := flag.NewFlagSet("recall", flag.ContinueOnError)
 	flags.SetOutput(os.Stderr)
@@ -180,7 +184,7 @@ func recallDocuments(root string) ([]continuity.SearchDocument, error) {
 	for _, capsule := range capsules {
 		documents = append(documents, continuity.SearchDocument{Kind: "capsule", Location: continuity.StateFilename + " (" + capsule.Name + ")", Summary: capsule.Name + ": " + capsule.Summary, Text: capsule.Name + " " + capsule.Summary + " " + capsule.Details})
 	}
-	history := filepath.Join(root, continuity.PlanHistoryDir)
+	history := filepath.Join(root, historyDir)
 	if err := filepath.WalkDir(history, func(path string, entry os.DirEntry, err error) error {
 		if err != nil {
 			if errors.Is(err, os.ErrNotExist) && path == history {

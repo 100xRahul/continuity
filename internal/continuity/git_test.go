@@ -24,7 +24,7 @@ func TestReviewAnchorsAndChangedSinceState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	state := NewTemplate(filepath.Join(root, StateFilename), "Test", "Test review anchors.", Snapshot(root), fingerprint)
+	state := NewTemplate(filepath.Join(root, StateFilename), "Test", Snapshot(root), fingerprint)
 	if err := state.ReplaceSection("Code Map", "- Parser — `src/parser.go`."); err != nil {
 		t.Fatal(err)
 	}
@@ -65,7 +65,9 @@ func TestEnsureGitRepoCreatesMissingDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !samePath(initialized, root) {
+	resolvedInitialized, _ := filepath.EvalSymlinks(initialized)
+	resolvedRoot, _ := filepath.EvalSymlinks(root)
+	if resolvedInitialized != resolvedRoot {
 		t.Fatalf("initialized root = %q, want %q", initialized, root)
 	}
 	if _, err := os.Stat(filepath.Join(root, ".git")); err != nil {
@@ -110,67 +112,6 @@ func TestFingerprintUsesGitFilesAndHonorsIgnoreRules(t *testing.T) {
 	}
 	if after == unchanged {
 		t.Fatal("source change did not change Git-aware fingerprint")
-	}
-}
-
-func TestChangedPathsBetweenUsesClaimBaseAcrossMultipleFiles(t *testing.T) {
-	root := t.TempDir()
-	if _, err := EnsureGitRepo(root); err != nil {
-		t.Fatal(err)
-	}
-	configureTestGit(t, root)
-	if err := os.WriteFile(filepath.Join(root, "first.go"), []byte("package test\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	runTestGit(t, root, "add", "first.go")
-	runTestGit(t, root, "commit", "-m", "baseline")
-	base, err := ResolveCommit(root, "HEAD")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(root, "first.go"), []byte("package test\nfunc First() {}\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(root, "second.go"), []byte("package test\nfunc Second() {}\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	runTestGit(t, root, "add", "first.go", "second.go")
-	runTestGit(t, root, "commit", "-m", "task result")
-	commit, err := ResolveCommit(root, "HEAD")
-	if err != nil {
-		t.Fatal(err)
-	}
-	paths, err := ChangedPathsBetween(root, base, commit)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := strings.Join(paths, ","); got != "first.go,second.go" {
-		t.Fatalf("changed paths = %q", got)
-	}
-}
-
-func TestChangedPathsBetweenFallsBackToFinalCommitForLegacyCompletion(t *testing.T) {
-	root := t.TempDir()
-	if _, err := EnsureGitRepo(root); err != nil {
-		t.Fatal(err)
-	}
-	configureTestGit(t, root)
-	if err := os.WriteFile(filepath.Join(root, "existing.go"), []byte("package test\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	runTestGit(t, root, "add", "existing.go")
-	runTestGit(t, root, "commit", "-m", "baseline")
-	if err := os.WriteFile(filepath.Join(root, "legacy.go"), []byte("package test\nfunc Legacy() {}\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	runTestGit(t, root, "add", "legacy.go")
-	runTestGit(t, root, "commit", "-m", "legacy result")
-	paths, err := ChangedPathsBetween(root, "", "HEAD")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got, want := strings.Join(paths, ","), "legacy.go"; got != want {
-		t.Fatalf("legacy changed paths = %q, want %q", got, want)
 	}
 }
 

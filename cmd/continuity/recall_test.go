@@ -54,7 +54,8 @@ func decisionRepo(t *testing.T) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	state := continuity.NewTemplate(filepath.Join(root, continuity.StateFilename), "Test", "Test recall.", continuity.Snapshot(root), fingerprint)
+	writeFile(t, root, continuity.PlanFilename, "---\nschema: 2\n---\n\n# Test plan\n\n## Intent\n\nStore data locally.\n\n## Milestones\n\n- [>] M-001 | title: Local storage | accepts: Data survives a restart.\n\n## Outcomes\n\n- [x] O-001 | milestone: M-001 | title: Choose the database | accepts: A decision record exists.\n- [ ] O-002 | milestone: M-001 | title: Persist sessions | accepts: A restarted process reads earlier sessions.\n")
+	state := continuity.NewTemplate(filepath.Join(root, continuity.StateFilename), "Test", continuity.Snapshot(root), fingerprint)
 	if err := state.ReplaceSection(continuity.PitfallsSection, "- Do not open the database file twice; the second handle corrupts writes. Evidence: `internal/db/store.go`."); err != nil {
 		t.Fatal(err)
 	}
