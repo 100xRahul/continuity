@@ -1,11 +1,11 @@
 ---
 schema: 2
-fingerprint: sha256:274b2a1f887e9ca2b71517710cedc9d7921c5c2fdcb66141fd528ba3b88a8895
+fingerprint: sha256:b45f1aaaece3c897809a1ec641f950d770a43c3505bf86534a49d3cd9259cec4
 branch: main
-head: 9fcecce0fef63db55c3c1ab80a63d485361030aa
+head: f9f1aacec3bcc562fd6e6de3606adc32d79b2b60
 status: ready
 active_task: none
-updated_at: 2026-08-03T16:00:06Z
+updated_at: 2026-10-14T18:29:46Z
 ---
 
 # Continuity
@@ -84,7 +84,7 @@ Validation: none
 
 ## Code Map
 
-- CLI command routing — `cmd/continuity/main.go` — parses lifecycle commands, explicitly approved task bootstrap, and state/Git facts.
+- CLI command routing — `cmd/continuity/main.go` — parses lifecycle commands, explicitly approved task bootstrap, state/Git facts, and on-demand `compact`.
 - Live coordination commands — `cmd/continuity/coordination.go` — priority-structured context packets, branch-aware claims, evidence-backed lifecycle integration, gate-safe next-work handoffs, and Codex hook output.
 - History lifecycle — `cmd/continuity/history.go` — deterministic active-state compaction, bounded change capsules, full change/outcome/milestone archive records, next-work selection, and archive-safe receipts.
 - State engine — `internal/continuity/state.go` — Markdown front matter, sections, approximately 30k-token validation, path-indexed Context Capsules, structured capsule replacement, templates, and atomic writes.
@@ -175,6 +175,9 @@ Archive: PROJECT_HISTORY/changes/T-016.md
 - Do not let an ignored fingerprint path bypass fact aging. Claim and check flows separately inspect changed source-linked paths, including project instructions such as `README.md`. Evidence: `cmd/continuity/main.go`, `cmd/continuity/governance_test.go`.
 - Do not equate preserving an existing harness instruction file with integrating Continuity. Preserve its content byte-for-byte and append one idempotent marked bridge when it does not already reference the shared protocol. Evidence: `internal/continuity/adapters.go`.
 - Do not byte-truncate a restart packet or let archive-backed repetition grow without a retention rule. Keep its safety block whole, omit optional sections structurally, and compact only history recoverable from Git or committed archives. Evidence: `cmd/continuity/coordination.go`, `cmd/continuity/history.go`.
+- Do not let state-size overflow refuse the commands that would shrink it. The compactor runs inside `integrate`, so blocking `ready`, `task add`, `start`, or `integrate` on overflow deadlocked the repository; overflow now warns there, `check` still fails, and `continuity compact` trims on demand. Evidence: `cmd/continuity/main.go`, `cmd/continuity/coordination.go`.
+- Do not let one unreadable claim record disable the claim store. Listing skips and reports damaged records so `status` and stale recovery keep working, while granting a claim still fails closed because exclusivity is unprovable. Evidence: `internal/continuity/coordination.go`.
+- Do not widen a claim or invent an owner from bad input. An empty or placeholder scope element is rejected instead of becoming `.`, and `start` and `checkpoint` require an explicit owner because a process-derived identity cannot be addressed by the next session. Evidence: `internal/continuity/coordination.go`, `cmd/continuity/main.go`.
 
 ## Verification
 - git diff --check: pass
