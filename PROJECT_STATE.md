@@ -2,8 +2,8 @@
 schema: 4
 fingerprint: sha256:0c3442dd785ddc152e65c254b06576a0f07aa93b5836121959e56f26b904179c
 branch: t-017-decision-recall
-head: f41b836cda389f5610c0e577af2ee19311f9f350
-updated_at: 2026-10-14T19:09:16Z
+head: 8923920fb75759701c6e90604e135795bd7b043a
+updated_at: 2026-10-14T19:09:27Z
 ---
 
 # Continuity
@@ -30,7 +30,7 @@ updated_at: 2026-10-14T19:09:16Z
 - Tests — `cmd/continuity/*_test.go`, `internal/continuity/*_test.go`.
 
 ## Fact Cards
-- [stale] F-001 | source: docs/adr/2026-10-15-keep-facts-drop-blockers-and-policies.md | paths: cmd/continuity/facts.go, internal/continuity/facts.go | verified: 2026-10-14T19:08:58Z | evidence: TestSyncAgesFactUntilAReviewConfirmsIt and TestFactCardsAgeOnlyOverlappingFreshEvidence passed. | summary: Facts age when their source paths change and become fresh again only through continuity fact confirm.
+- [fresh] F-001 | source: docs/adr/2026-10-15-keep-facts-drop-blockers-and-policies.md | paths: cmd/continuity/facts.go, internal/continuity/facts.go | verified: 2026-10-14T19:09:27Z | evidence: TestSyncAgesFactUntilAReviewConfirmsIt passed after the facts code moved to cmd/continuity/facts.go. | summary: Facts age when their source paths change and become fresh again only through continuity fact confirm.
 ## Context Capsules
 
 ### Project-wide orientation
