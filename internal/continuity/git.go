@@ -175,8 +175,15 @@ func sourceFiles(root string) ([]string, error) {
 	return files, err
 }
 
+// ignoredDirectory also excludes decision records: they are durable project
+// memory read at request time, so a new decision must not mark the source
+// index stale.
 func ignoredDirectory(relative string) bool {
-	first := strings.Split(filepath.ToSlash(relative), "/")[0]
+	relative = filepath.ToSlash(relative)
+	if relative == DecisionDir || strings.HasPrefix(relative, DecisionDir+"/") {
+		return true
+	}
+	first := strings.Split(relative, "/")[0]
 	switch first {
 	case ".git", ".agents", ".codex", ".claude", ".cursor", ".github", ".gemini", "integrations", "node_modules", "vendor", "dist", "build", ".continuity-local":
 		return true

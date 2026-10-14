@@ -286,6 +286,13 @@ func checkCommand(args []string) error {
 			}
 		}
 	}
+	if _, problems, decisionErr := continuity.LoadDecisions(root); decisionErr != nil {
+		result.Errorf("decision records: %v", decisionErr)
+	} else {
+		for _, problem := range problems {
+			result.Errorf("decision record %s", problem)
+		}
+	}
 	snapshot := continuity.Snapshot(root)
 	fingerprint, err := continuity.Fingerprint(root)
 	if err != nil {

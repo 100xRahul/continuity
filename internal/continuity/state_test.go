@@ -83,10 +83,9 @@ func TestFingerprintExcludesStateAndAdapters(t *testing.T) {
 
 func TestEvidencePathsUsesOnlyDurablePathAnchors(t *testing.T) {
 	state := NewState("PROJECT_STATE.md", map[string]string{}, "# Example\n\n"+
-		"## Active Decisions\n\n"+
-		"- D-001 — Preserve the parser boundary. Evidence: `internal/continuity/state.go`.\n\n"+
 		"## Code Map\n\n"+
-		"- CLI — `cmd/continuity/`.\n\n"+
+		"- CLI — `cmd/continuity/`.\n"+
+		"- State engine — `internal/continuity/state.go`.\n\n"+
 		"## Known Pitfalls and Failed Approaches\n\n"+
 		"- Avoid `go test ./...` as an evidence path.\n\n"+
 		"## Active Work\n\n"+

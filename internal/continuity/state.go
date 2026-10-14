@@ -12,7 +12,7 @@ import (
 
 const (
 	StateFilename               = "PROJECT_STATE.md"
-	CurrentStateSchema          = "2"
+	CurrentStateSchema          = "3"
 	ApproximateStateTokenBudget = 30_000
 	ApproximateBytesPerToken    = 4
 	DefaultStateBudget          = ApproximateStateTokenBudget * ApproximateBytesPerToken
@@ -23,7 +23,6 @@ var RequiredSections = []string{
 	"Approved Outcomes",
 	"Active Work",
 	"Ready Queue",
-	"Active Decisions",
 	"Constraints and Approval Boundaries",
 	"Code Map",
 	"Context Capsules",
@@ -303,6 +302,9 @@ func (s *State) Validate(budget int) Validation {
 	for _, section := range s.DuplicateSections {
 		result.Errorf("section %q appears more than once", section)
 	}
+	if _, present := s.Sections["Active Decisions"]; present {
+		result.Errorf("section \"Active Decisions\" is not part of schema %s; record each decision as a file in %s", CurrentStateSchema, DecisionDir)
+	}
 	if _, err := s.ContextCapsules(); err != nil {
 		result.Errorf("context capsules: %v", err)
 	}
@@ -347,7 +349,7 @@ func (s *State) Validate(budget int) Validation {
 // in backticks in the durable sections where an agent relies on them as evidence.
 // Existence and change detection are deliberately left to the Git layer.
 func (s *State) EvidencePaths() []string {
-	sections := []string{"Active Decisions", "Code Map", "Context Capsules", "Known Pitfalls and Failed Approaches", "Active Work"}
+	sections := []string{"Code Map", "Context Capsules", "Known Pitfalls and Failed Approaches", "Active Work"}
 	seen := map[string]bool{}
 	paths := []string{}
 	for _, section := range sections {
@@ -633,10 +635,6 @@ Edit scope: none
 Validation: none
 
 ## Ready Queue
-
-## Active Decisions
-
-- Add only active engineering decisions with a short why and a repository-relative evidence anchor.
 
 ## Fact Cards
 

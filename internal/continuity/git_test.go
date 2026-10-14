@@ -25,7 +25,7 @@ func TestReviewAnchorsAndChangedSinceState(t *testing.T) {
 		t.Fatal(err)
 	}
 	state := NewTemplate(filepath.Join(root, StateFilename), "Test", "Test review anchors.", Snapshot(root), fingerprint)
-	if err := state.ReplaceSection("Active Decisions", "- D-001 — Preserve the parser boundary. Evidence: `src/parser.go`."); err != nil {
+	if err := state.ReplaceSection("Code Map", "- Parser — `src/parser.go`."); err != nil {
 		t.Fatal(err)
 	}
 	if err := state.Save(); err != nil {
