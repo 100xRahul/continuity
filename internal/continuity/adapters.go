@@ -85,18 +85,15 @@ func InstallAdapters(root string) (InstallReport, error) {
 	}
 
 	files := map[string]string{
-		".cursor/rules/project-continuity.mdc":                              cursorTemplate,
-		".agents/hooks/continuity.sh":                                       hookScriptTemplate,
-		".agents/skills/project-continuity/SKILL.md":                        skillTemplate,
-		".agents/skills/project-continuity/agents/openai.yaml":              skillMetadataTemplate,
-		".agents/skills/project-continuity/references/state-schema.md":      skillSchemaTemplate,
-		".agents/skills/project-continuity/references/plan-schema.md":       planSchemaTemplate,
-		".agents/skills/project-continuity/references/governance-schema.md": governanceSchemaTemplate,
-		".agents/skills/record-decisions/SKILL.md":                          recordDecisionsSkillTemplate,
-		".agents/worktrunk/README.md":                                       worktrunkReadmeTemplate,
-		".agents/worktrunk/wt.toml.example":                                 worktrunkConfigTemplate,
-		DecisionDir + "/README.md":                                          decisionReadmeTemplate,
-		DecisionDir + "/template.md":                                        decisionRecordTemplate,
+		".cursor/rules/project-continuity.mdc":                         cursorTemplate,
+		".agents/hooks/continuity.sh":                                  hookScriptTemplate,
+		".agents/skills/project-continuity/SKILL.md":                   skillTemplate,
+		".agents/skills/project-continuity/agents/openai.yaml":         skillMetadataTemplate,
+		".agents/skills/project-continuity/references/state-schema.md": skillSchemaTemplate,
+		".agents/skills/project-continuity/references/plan-schema.md":  planSchemaTemplate,
+		".agents/skills/record-decisions/SKILL.md":                     recordDecisionsSkillTemplate,
+		DecisionDir + "/README.md":                                     decisionReadmeTemplate,
+		DecisionDir + "/template.md":                                   decisionRecordTemplate,
 	}
 	paths := make([]string, 0, len(files))
 	for path := range files {
@@ -394,33 +391,35 @@ func (r InstallReport) String() string {
 
 const agentsBridge = `## Project continuity
 
-Before non-trivial work, read and follow the repository's project-continuity skill. Use PROJECT_PLAN.md and PROJECT_STATE.md as the shared cross-harness authority, and run continuity context with this harness's stable worker identity before resuming or editing.`
+Before non-trivial work, run continuity context (or read the session-start context) and follow the repository project-continuity skill. PROJECT_PLAN.md says what to build next, docs/adr holds decisions, and PROJECT_STATE.md is the project index.`
 
 const claudeBridge = `## Project continuity
 
 @AGENTS.md
 
-PROJECT_STATE.md is the shared project authority; use the project-continuity skill or continuity context before resuming or editing.`
+PROJECT_STATE.md is the project index; run continuity context or use the project-continuity skill before resuming or editing.`
 
 const geminiBridge = `## Project continuity
 
-Read and follow AGENTS.md before non-trivial work. Use PROJECT_STATE.md and continuity context as durable cross-harness state rather than relying on chat memory.`
+Read and follow AGENTS.md before non-trivial work. Run continuity context first; PROJECT_PLAN.md, docs/adr, and PROJECT_STATE.md are the shared project memory, not chat history.`
 
 const copilotBridge = `## Project continuity
 
-Follow AGENTS.md and use PROJECT_STATE.md as the durable project authority. Invoke the repository project-continuity skill or continuity context before non-trivial work.`
+Follow AGENTS.md. Run continuity context or invoke the project-continuity skill before non-trivial work; PROJECT_STATE.md is the project index.`
 
 const agentsTemplate = `# Continuity bootloader
 
-PROJECT_PLAN.md is the committed delivery contract, PROJECT_STATE.md is the bounded operational index, and Git's common directory holds live claims. Treat chat and harness memory as non-authoritative.
+This repository keeps project memory in files every harness reads: PROJECT_PLAN.md (what to build next), docs/adr (decisions and their reasons), and PROJECT_STATE.md (index of code, facts, pitfalls, and the last handoff). Treat chat and harness memory as non-authoritative.
 
-Before non-trivial work, use the repository project-continuity skill. If it is unavailable, run continuity context --owner <harness:session-id>; Codex may use --session. Obey every STOP, ownership gate, and immediate next action in that restart index. A draft plan requires repository inspection, user decisions, and explicit milestone approval before implementation; later product changes require an approved plan delta.
+1. Start: read the session-start context, or run continuity context. It shows constraints, the next work, the last handoff, and current decisions.
+2. Before changing an area, run continuity recall --path <file>; for an earlier question, run continuity recall <words>. Read a decision record before acting against it.
+3. When the user states, approves, or changes a decision, record it with the record-decisions skill before the session ends. Supersede a decision the user made only with the user's approval.
+4. Work only on open outcomes of the active milestone in PROJECT_PLAN.md. Mark an outcome [x] after its acceptance is verified. Ask the user before adding or changing outcomes or milestones; with no active milestone, ask what comes next.
+5. Before ending: update the Handoff section, update the index entries your work changed, run continuity sync, and commit.
 
-Before editing, claim the named approved task with continuity start. One worktree has exactly one writer. A second writer needs a separate branch, worktree, non-overlapping approved task, and independent claim; child agents are read-only in the parent checkout. Checkpoint material progress, run focused validation, commit, and continuity finalize with evidence. Merge or hand off the result, then run continuity integrate from the integration checkout.
+Never store raw chats, reasoning, source code, secrets, or untrusted text in these files. Stop for destructive actions, production changes, credentials, paid services, security uncertainty, unresolved product choices, or unexplained failures.
 
-Decisions live in docs/adr and the restart packet lists current ones; run continuity recall --path <file> before changing an area, and record user-stated or approved decisions with the record-decisions skill. Never edit through another owner's claim. Stale facts and open blockers are gates. Do not invent product scope, change approved outcomes, or claim autonomous: no work. Keep durable state compact and factual. Stop for destructive actions, production changes, credentials, paid services, security uncertainty, unresolved product choices, repeated blockers, or unexplained validation failures.
-
-The complete workflow and recovery rules live in .agents/skills/project-continuity/SKILL.md and its references; do not duplicate them here.
+The project-continuity skill holds the full workflow and file formats.
 `
 
 const claudeTemplate = `@AGENTS.md
@@ -432,26 +431,26 @@ PROJECT_STATE.md is the project authority. Use the project-continuity skill or c
 
 const geminiTemplate = `# Continuity adapter
 
-Read and follow AGENTS.md before non-trivial work. Use PROJECT_STATE.md and the continuity CLI as durable cross-harness state; do not rely on chat memory as project authority.
+Read and follow AGENTS.md before non-trivial work. Run continuity context first; PROJECT_PLAN.md, docs/adr, and PROJECT_STATE.md are the shared project memory, not chat history.
 `
 
 const copilotTemplate = `# Continuity adapter
 
 @AGENTS.md
 
-Use PROJECT_STATE.md as the durable project authority. Invoke the repository project-continuity skill or run its CLI fallback for every non-trivial task.
+Run continuity context or invoke the repository project-continuity skill before non-trivial work. PROJECT_STATE.md is the project index.
 `
 
 const cursorTemplate = `---
-description: Enforce repository-native continuity for non-trivial work.
+description: Use the repository's shared project memory for non-trivial work.
 alwaysApply: true
 ---
 
-Read and follow AGENTS.md. Treat PROJECT_STATE.md as the durable cross-harness authority and use the project-continuity workflow before starting, resuming, handing off, or completing non-trivial work.
+Read and follow AGENTS.md. Run continuity context before starting or resuming non-trivial work, continuity recall --path <file> before changing an area, and update the Handoff in PROJECT_STATE.md before handing off.
 `
 
 const codexHooksTemplate = `{
-  "description": "Optional Continuity coordination hooks for Codex sessions.",
+  "description": "Continuity project-memory hooks for Codex sessions.",
   "hooks": {
     "SessionStart": [
       {
@@ -460,49 +459,9 @@ const codexHooksTemplate = `{
           {
             "type": "command",
             "command": "sh \"$(git rev-parse --show-toplevel)/.agents/hooks/continuity.sh\" codex session-start",
-            "statusMessage": "Loading shared Continuity status",
+            "statusMessage": "Loading project memory",
             "timeout": 10,
             "additionalContextLimit": 2000
-          }
-        ]
-      }
-    ],
-    "SubagentStart": [
-      {
-        "matcher": ".*",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "sh \"$(git rev-parse --show-toplevel)/.agents/hooks/continuity.sh\" codex subagent-start",
-            "statusMessage": "Loading shared Continuity status",
-            "timeout": 10,
-            "additionalContextLimit": 2000
-          }
-        ]
-      }
-    ],
-    "UserPromptSubmit": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "sh \"$(git rev-parse --show-toplevel)/.agents/hooks/continuity.sh\" codex user-prompt",
-            "statusMessage": "Refreshing shared Continuity status",
-            "timeout": 10,
-            "additionalContextLimit": 700
-          }
-        ]
-      }
-    ],
-    "PreToolUse": [
-      {
-        "matcher": "^(Bash|apply_patch|Edit|Write)$",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "sh \"$(git rev-parse --show-toplevel)/.agents/hooks/continuity.sh\" codex pretool",
-            "statusMessage": "Checking worktree claim",
-            "timeout": 10
           }
         ]
       }
@@ -587,98 +546,74 @@ const openCodeTemplate = `{
 
 const skillTemplate = `---
 name: project-continuity
-description: Resume, coordinate, perform, checkpoint, finalize, or integrate non-trivial engineering work in a repository containing PROJECT_STATE.md. Use at session start, after context loss or compaction, when another local agent may be active, before code edits, and before handoff or completion.
+description: Resume, continue, or hand off non-trivial work in a repository with PROJECT_STATE.md, PROJECT_PLAN.md, and docs/adr. Use at session start, after context loss or compaction, before changing code, when the user asks why something is the way it is, and before ending a session.
 ---
 
 # Project continuity
 
-Run continuity context --owner <harness:session-id>; Codex may use --session as a convenience alias. This bounded restart index reports ownership, gates stale state, and names the highest-ranked approved next action; its ownership, gate, constraint, and action block must fit whole or the command fails explicitly. Use status or ready only for deeper diagnostics. Use --scope to select only relevant Context Capsules and active plan outcomes from the approximately 30k-token durable index. If another owner holds this worktree, do not edit or reinterpret its changes; work read-only, wait, or use a separate worktree. Codex child agents are read-only in their parent checkout; use a separate worktree and claim for a child writer. If state is stale, run continuity reconcile and inspect only listed changes plus mapped code, then sync durable facts.
+The repository's memory lives in three places. PROJECT_PLAN.md is the user's roadmap: Intent, Milestones, and Outcomes; the active milestone's open outcomes are the next work. docs/adr holds one decision per file. PROJECT_STATE.md indexes constraints, the code map, facts, context capsules, known pitfalls, and the last handoff.
 
-When PROJECT_PLAN.md is draft, inspect repository facts and interview the user one decision at a time with a recommendation. Store compact facts, source references, assumptions, and decision cards rather than raw chat. Do not claim implementation work until the user explicitly approves the milestone with continuity plan approve --approved --milestone M-001. Treat later product, priority, constraint, and milestone changes as plan deltas.
+## Resume
 
-Before editing, follow the context packet's approved next task and claim it with continuity start. Planned tasks must link to the active approved outcome and carry a focused scope plus validation command; start defaults those fields and requires an evidence-based --selection-reason. One worktree and one branch have one writer; claims reject duplicate tasks, shared branches, and overlapping scopes. From an unclaimed integration worktree, use continuity task add --approved for a user-specified task or continuity task add --derived --outcome O-001 --scope path --validates command --rationale text for a needed technical step wholly inside the active outcome. The derived route immediately commits the queue record; neither route authorizes product work. Stale Fact Cards and open Blocker Cards block overlapping claims until an explicit evidence-backed confirmation or resolution. Add executable policy checks only with explicit user approval through continuity policy add --approved; relevant checks run at finalize and a failure checkpoints the claim. Worktrunk users may opt into .agents/worktrunk/wt.toml.example for new-worktree orientation. Commit, finalize with verification evidence, then merge/hand off and use continuity integrate before declaring the task durable. Integration writes a committed change archive, ages affected source-linked facts, compacts archive-backed task and evidence repetition, and retains a short path-scoped capsule; once every task for an active outcome is integrated, record its evidence-backed completion with continuity plan outcome complete before activating a later milestone.
+1. Read the session-start context, or run continuity context. It always shows index freshness, uncommitted files, broken decision records, stale facts, and constraints, then the next work, the last handoff, current decision titles, and capsules. Use --scope path to put matching decisions and capsules first.
+2. If the index is stale, run continuity reconcile, update only the entries the listed changes affect, then run continuity sync.
+3. If uncommitted changes exist, inspect them before editing; they can be unfinished work from the last session.
 
-Do not replace code inspection with state prose, store raw chats or reasoning, change user-owned product direction, or invent features. Read references/state-schema.md when changing state structure or resolving ownership, freshness, or integration questions. Read references/governance-schema.md before adding a fact, blocker, or policy.
+## While working
+
+- Before changing an area, run continuity recall --path <file>. Claude Code and Codex hooks show linked decisions and pitfalls when a file is read or edited. For "why" questions or a topic, run continuity recall <words>.
+- Follow current decisions. To change one, add a record that supersedes it with the record-decisions skill; a decision the user made changes only with the user's approval.
+- When the user states or approves a decision, record it during the session with the record-decisions skill.
+- Work only on open outcomes of the active milestone. Mark an outcome [x] after its acceptance is verified. Ask the user before adding or changing outcomes or milestones; with no active milestone, ask what comes next.
+- Record a lasting failed approach under Known Pitfalls with its evidence paths in backticks. Add a Fact Card only for a fact later work relies on; a stale fact needs a review and continuity fact confirm.
+
+## Hand off
+
+Before ending, update the Handoff section: what was done, what is in progress, and the exact next step. Update the Code Map, capsules, pitfalls, and facts your work changed, run continuity sync, and commit. If no decision record was needed, say so.
+
+Never store raw chats, reasoning, source code, secrets, or untrusted multiline text. Read references/state-schema.md and references/plan-schema.md for exact formats.
 `
 
 const skillMetadataTemplate = `interface:
   display_name: "Project Continuity"
-  short_description: "Coordinate and resume shared project work"
-  default_prompt: "Use $project-continuity to safely resume, coordinate, or hand off this repository task."
+  short_description: "Resume and hand off work with shared project memory"
+  default_prompt: "Use $project-continuity to resume this repository's work from its plan, decisions, and handoff."
 `
 
 const skillSchemaTemplate = `# State schema
 
-Required front matter: schema, fingerprint, branch, head, status, active_task, and updated_at.
+PROJECT_STATE.md starts with front matter: schema (4), fingerprint, branch, head, and updated_at. continuity sync maintains them.
 
-Required sections: Product Intent, Approved Outcomes, Active Work, Ready Queue, Active Decisions, Constraints and Approval Boundaries, Code Map, Context Capsules, Known Pitfalls and Failed Approaches, Verification, Recent Material Changes, and Handoff.
+Required sections: Constraints and Approval Boundaries, Code Map, Fact Cards, Context Capsules, Known Pitfalls and Failed Approaches, and Handoff. Product intent and outcomes live in PROJECT_PLAN.md; decisions live in docs/adr.
 
-Legacy task lines use this compact form:
+Fact Cards use one line each:
 
-    - [ ] T-001 | Task title | depends: none | autonomous: yes | accepts: Observable completion criteria.
+    - [fresh] F-001 | source: docs/adr/2026-01-31-title.md | paths: internal/auth, api/auth | verified: 2026-07-30T12:00:00Z | evidence: Focused review passed. | summary: Auth boundary preserves token invalidation.
 
-Planned task lines additionally bind a focused technical step to an active approved outcome:
+A fresh fact becomes stale when continuity sync sees changes under its paths. Only continuity fact confirm with new review evidence makes it fresh again, and the restart context lists stale facts.
 
-    - [ ] T-001 | Task title | outcome: O-001 | scope: internal/auth | depends: none | autonomous: yes | validates: go test ./internal/auth | accepts: Observable completion criteria. | derived: Why this is the best next step.
+Context Capsules hold path-scoped detail:
 
-Only autonomous tasks with explicit acceptance criteria can be claimed by a fresh agent. Planned claims require a one-line selection reason and default to their task's scope and validation; task scopes may not exceed the outcome scope. PROJECT_PLAN.md is the detailed delivery contract; PROJECT_STATE.md stores approximately 30k tokens of bounded active truth. Context Capsules keep that knowledge path-indexed and continuity context --scope keeps routine prompts selective. Ownership, gates, constraints, and the exact action must fit whole; optional capsule detail is omitted structurally rather than byte-truncated. Git's local common directory stores live claims, heartbeats, and completions for same-machine worktrees. Use continuity integrate only after the verified worker commit is present in the integration checkout; it writes a full PROJECT_HISTORY/changes record, keeps unfinished tasks, incomplete-outcome and unarchived contracts, the newest 12 archive-backed completed tasks, and the newest 12 distinct evidence/change lines, and retains only the newest three generated short capsules in active state. Archived task IDs cannot be reused; Git and PROJECT_HISTORY remain the full archive.
+    ### Authentication boundary
+    Paths: api/auth, internal/auth
+    Summary: Token rotation and session invalidation contract.
+    Details: Load only for authentication work.
 
-Optional Fact Cards and Blocker Cards are strict compact sections in PROJECT_STATE.md. Fresh facts age when their source paths change, stale facts and open blockers gate only overlapping claims, and fresh review or resolution always needs explicit new evidence. CONTINUITY_POLICY.md contains only user-approved finalize commands. See references/governance-schema.md for exact syntax.
+Known Pitfalls are bullets; put evidence paths in backticks so continuity recall --path and the hooks link them to files. The Handoff is free text: what was done, what is in progress, and the exact next step.
+
+The file may hold about 30,000 tokens; the restart context selects parts of it. The source fingerprint ignores PROJECT_PLAN.md, docs/adr, and harness adapters, so updating them does not make the index stale.
 `
 
-const governanceSchemaTemplate = `# Evidence gate schema
+const planSchemaTemplate = `# Plan schema
 
-These optional, committed records preserve source-backed engineering knowledge without storing chat history or hidden harness memory.
+PROJECT_PLAN.md has front matter with schema: 2 and exactly three sections: Intent, Milestones, and Outcomes. File order is priority.
 
-## Fact Cards in PROJECT_STATE.md
+    - [ ] M-001 | title: Local storage | accepts: Data survives a restart.
+    - [ ] O-001 | milestone: M-001 | title: Persist sessions | accepts: A restarted process reads earlier sessions.
 
-    - [fresh] F-001 | source: D-001 | paths: internal/auth, api/auth | verified: 2026-07-30T12:00:00Z | evidence: Focused review passed. | summary: Auth boundary preserves token invalidation.
+A milestone is planned [ ], active [>], or done [x]; at most one is active. An outcome is open [ ] or done [x]. continuity context shows the active milestone's open outcomes as the next work.
 
-Use fresh or stale. Source paths are repository-relative code, plan, or policy evidence paths. An affected fresh card becomes stale during evidence-aware synchronization or integration; it never becomes fresh without continuity fact confirm and new review evidence. A stale fact blocks overlapping task claims.
-
-## Blocker Cards in PROJECT_STATE.md
-
-    - [open] B-001 | task: T-014 | scope: internal/auth | hypothesis: Test identity provider is unreachable. | evidence: Connection refused from focused test. | next: Obtain a reachable local provider. | resolution: none
-
-Use open or resolved. Record a blocker only after progress stops; the same task, hypothesis, and evidence must not be retried. An open blocker blocks overlapping claims until continuity blocker resolve records new evidence.
-
-## Policy checks in CONTINUITY_POLICY.md
-
-    ### P-001
-    Scope: internal/auth
-    Phase: finalize
-    Command: go test ./internal/auth
-    Reason: Authentication changes require focused verification.
-
-Add a policy only through explicit user-approved continuity policy add --approved. Relevant checks run before finalization; failure checkpoints the claim and creates no completion. Policy output is not copied into durable state.
-`
-
-const planSchemaTemplate = `# Delivery plan schema
-
-PROJECT_PLAN.md is the committed detailed delivery contract. It has front matter with schema, status, active_milestone, approved_at, and updated_at.
-
-Required sections: Intent, Sources, Milestones, Outcomes, Constraints, Assumptions, Decisions, and Deltas.
-
-The plan is draft until an explicit continuity plan approve --approved --milestone M-001 receipt. A draft is where the agent records compact repository facts and interviews the user one decision at a time; never store raw chat. Only the active milestone becomes executable. High-impact open decisions affecting it block approval.
-
-Milestones group user-visible outcomes. Tasks must later link to an approved active outcome with a focused scope contained by the outcome and a validation command. continuity ready ranks candidates by outcome priority and direct unblocking evidence; continuity start records why the agent chose its task. From an unclaimed integration worktree, continuity task add --derived may add a focused technical subtask only inside an active outcome and immediately commits the queue record. Product, priority, constraint, and milestone changes use explicit plan deltas. Once every linked task is integrated, continuity plan outcome complete records an evidence-backed outcome archive; activating a later milestone snapshots the completed milestone. Completed detail belongs in committed PROJECT_HISTORY archives, while PROJECT_STATE.md keeps only a compact active projection.
-`
-
-const worktrunkReadmeTemplate = `# Optional Worktrunk bridge
-
-Worktrunk manages branches and Git worktrees; Continuity supplies shared project context, task claims, and integration records. Worktrunk is optional: plain-Git Continuity workflows remain supported.
-
-Install continuity on PATH, review wt.toml.example, then copy it to .config/wt.toml if you want Worktrunk to show bounded orientation and live ownership in new worktrees. Open the harness in the new worktree before claiming work, then use its real owner ID. Claims remain explicit because they require that identity and a narrow code scope.
-
-Use one writer, worktree, and branch per task. In each new worktree: run continuity context and follow its approved next action; use status or ready only for deeper diagnostics. Claim with continuity start and the packet's evidence-based --selection-reason, work and finalize, merge, then run continuity integrate from the integration checkout. A user-specified task can be added from an unclaimed integration worktree with continuity task add --approved. In an approved plan, continuity task add --derived --outcome O-001 --scope path --validates command --rationale text may add only a focused technical step inside that active outcome and commits it immediately; agents must not invent product work.
-`
-
-const worktrunkConfigTemplate = `# Optional Continuity bridge for Worktrunk.
-# Copy to .config/wt.toml only after continuity is on PATH and this command is reviewed.
-
-[pre-start]
-continuity_context = "continuity context --scope . --limit 1800"
-continuity_status = "continuity status"
+Agents mark an outcome [x] after its acceptance is verified. Only the user adds or changes outcomes and milestones or chooses the active one. An empty plan means: interview the user one decision at a time, with a recommendation each time, and draft milestones and outcomes for approval.
 `
 
 const decisionReadmeTemplate = `# Decision records

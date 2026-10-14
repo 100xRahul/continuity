@@ -1,4 +1,4 @@
 interface:
   display_name: "Project Continuity"
-  short_description: "Coordinate and resume shared project work"
-  default_prompt: "Use $project-continuity to safely resume, coordinate, or hand off this repository task."
+  short_description: "Resume and hand off work with shared project memory"
+  default_prompt: "Use $project-continuity to resume this repository's work from its plan, decisions, and handoff."

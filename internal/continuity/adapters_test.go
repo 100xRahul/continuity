@@ -10,20 +10,18 @@ import (
 func TestCrossHarnessAdaptersPointToSharedProtocol(t *testing.T) {
 	root := moduleRoot(t)
 	required := map[string][]string{
-		"AGENTS.md":                                  {"PROJECT_PLAN.md", "PROJECT_STATE.md", "continuity context", "continuity start", "one writer"},
+		"AGENTS.md":                                  {"PROJECT_PLAN.md", "PROJECT_STATE.md", "docs/adr", "continuity context", "continuity recall", "Handoff"},
 		"CLAUDE.md":                                  {"AGENTS.md", "PROJECT_STATE.md"},
 		"GEMINI.md":                                  {"AGENTS.md", "PROJECT_STATE.md"},
 		".github/copilot-instructions.md":            {"@AGENTS.md", "project-continuity"},
 		".cursor/rules/project-continuity.mdc":       {"AGENTS.md", "PROJECT_STATE.md"},
-		".codex/hooks.json":                          {"SessionStart", "SubagentStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "continuity.sh\\\" codex posttool"},
+		".codex/hooks.json":                          {"SessionStart", "PostToolUse", "continuity.sh\\\" codex posttool"},
 		".claude/settings.json":                      {"SessionStart", "PostToolUse", "continuity.sh", "\"claude\", \"posttool\""},
 		".agents/hooks/continuity.sh":                {"continuity hook \"$harness\" \"$phase\""},
 		"opencode.json":                              {"AGENTS.md"},
-		".agents/skills/project-continuity/SKILL.md": {"name: project-continuity", "PROJECT_PLAN.md", "continuity context", "continuity integrate"},
-		".agents/skills/project-continuity/references/plan-schema.md":       {"PROJECT_PLAN.md", "active_milestone", "plan approve"},
-		".agents/skills/project-continuity/references/governance-schema.md": {"Fact Cards", "Blocker Cards", "CONTINUITY_POLICY.md", "policy add"},
-		".agents/worktrunk/README.md":                                       {"Worktrunk", "continuity start", "each writer"},
-		".agents/worktrunk/wt.toml.example":                                 {"[pre-start]", "continuity context", "continuity status"},
+		".agents/skills/project-continuity/SKILL.md": {"name: project-continuity", "PROJECT_PLAN.md", "continuity context", "continuity recall", "Handoff"},
+		".agents/skills/project-continuity/references/plan-schema.md":  {"PROJECT_PLAN.md", "schema: 2", "M-001", "O-001"},
+		".agents/skills/project-continuity/references/state-schema.md": {"Fact Cards", "Handoff", "schema (4)"},
 	}
 	for relative, fragments := range required {
 		contents, err := os.ReadFile(filepath.Join(root, relative))
@@ -57,7 +55,7 @@ func TestAgentsAdapterStaysACompactBootloader(t *testing.T) {
 	if len(agentsTemplate) > 2_000 {
 		t.Fatalf("fresh-repository AGENTS template grew into a duplicate manual: %d bytes", len(agentsTemplate))
 	}
-	for _, required := range []string{"PROJECT_PLAN.md", "PROJECT_STATE.md", "continuity context", "continuity start", "one writer", "project-continuity/SKILL.md"} {
+	for _, required := range []string{"PROJECT_PLAN.md", "PROJECT_STATE.md", "docs/adr", "continuity context", "continuity recall", "project-continuity"} {
 		if !strings.Contains(string(contents), required) || !strings.Contains(agentsTemplate, required) {
 			t.Fatalf("compact bootloader omitted %q", required)
 		}
@@ -143,9 +141,6 @@ func TestInstallAdaptersConnectsExistingInstructionsWithoutOverwriting(t *testin
 		".agents/hooks/continuity.sh",
 		".agents/skills/project-continuity/SKILL.md",
 		".agents/skills/project-continuity/references/plan-schema.md",
-		".agents/skills/project-continuity/references/governance-schema.md",
-		".agents/worktrunk/README.md",
-		".agents/worktrunk/wt.toml.example",
 	} {
 		if _, err := os.Stat(filepath.Join(root, path)); err != nil {
 			t.Errorf("adapter %s was not installed: %v", path, err)
@@ -172,7 +167,7 @@ func TestInstallAdaptersConnectsExistingInstructionsWithoutOverwriting(t *testin
 		if readErr != nil {
 			t.Fatal(readErr)
 		}
-		if path == ".codex/hooks.json" && strings.Count(string(contents), "continuity.sh") != 5 {
+		if path == ".codex/hooks.json" && strings.Count(string(contents), "continuity.sh") != 2 {
 			t.Fatalf("Continuity hooks in %s were duplicated: %s", path, contents)
 		}
 		if path == "opencode.json" && strings.Count(string(contents), "AGENTS.md") != 1 {

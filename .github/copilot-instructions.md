@@ -2,4 +2,4 @@
 
 @AGENTS.md
 
-Use `PROJECT_STATE.md` as the durable project authority. Invoke the repository `project-continuity` skill or run its CLI fallback for every non-trivial task.
+Run continuity context or invoke the repository project-continuity skill before non-trivial work. PROJECT_STATE.md is the project index.

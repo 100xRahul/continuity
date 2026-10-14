@@ -1,6 +1,6 @@
 ---
-description: Enforce repository-native continuity for non-trivial work.
+description: Use the repository's shared project memory for non-trivial work.
 alwaysApply: true
 ---
 
-Read and follow `AGENTS.md`. Treat `PROJECT_STATE.md` as the durable cross-harness authority and use the `project-continuity` workflow before starting, resuming, handing off, or completing non-trivial work.
+Read and follow AGENTS.md. Run continuity context before starting or resuming non-trivial work, continuity recall --path <file> before changing an area, and update the Handoff in PROJECT_STATE.md before handing off.

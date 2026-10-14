@@ -1,42 +1,28 @@
 ---
 name: project-continuity
-description: Resume, coordinate, perform, checkpoint, finalize, or integrate non-trivial engineering work in a repository containing PROJECT_STATE.md. Use at session start, after context loss or compaction, when another local agent session may be active, before code edits, and before handoff or completion.
+description: Resume, continue, or hand off non-trivial work in a repository with PROJECT_STATE.md, PROJECT_PLAN.md, and docs/adr. Use at session start, after context loss or compaction, before changing code, when the user asks why something is the way it is, and before ending a session.
 ---
 
 # Project continuity
 
-Use the committed project index for durable meaning and the live local claim board for concurrent ownership. Do not reconstruct either from chat history or broad code searches.
+The repository's memory lives in three places. PROJECT_PLAN.md is the user's roadmap: Intent, Milestones, and Outcomes; the active milestone's open outcomes are the next work. docs/adr holds one decision per file. PROJECT_STATE.md indexes constraints, the code map, facts, context capsules, known pitfalls, and the last handoff.
 
 ## Resume
 
-1. Use automatic harness context when available; otherwise run `continuity context --owner <harness:session-id>`. Codex may use `--session` as a convenience alias. The bounded packet reports live ownership, blocks gated claims, and names the next approved action. Ownership, gates, constraints, and that action must fit whole; increase the limit rather than bypassing a safety-packet error. Use `status` or `ready` only for deeper diagnostics.
-2. If another owner holds this worktree, do not edit or reinterpret its changes. Work read-only, wait, or use a separate worktree.
-3. A Codex child agent is read-only in its parent worktree; use a separate worktree and claim for a child writer.
-4. If state is stale, run `continuity reconcile`; inspect only listed changes and mapped code. Update durable facts and run `continuity sync` before claiming a task.
-5. Follow the context packet's highest-ranked approved, unblocked `autonomous: yes` task with observable acceptance criteria. For planned work, use its outcome priority and direct unblocking evidence, then record the supplied reason at claim time. Use `continuity ready` when the ranking needs deeper inspection.
+1. Read the session-start context, or run continuity context. It always shows index freshness, uncommitted files, broken decision records, stale facts, and constraints, then the next work, the last handoff, current decision titles, and capsules. Use --scope path to put matching decisions and capsules first.
+2. If the index is stale, run continuity reconcile, update only the entries the listed changes affect, then run continuity sync.
+3. If uncommitted changes exist, inspect them before editing; they can be unfinished work from the last session.
 
-## Evidence gates
+## While working
 
-`PROJECT_STATE.md` may include compact source-linked Fact Cards and durable Blocker Cards. A stale fact or open blocker overlapping the task scope is an active gate, not background context: inspect the named evidence and use `continuity fact confirm` or `continuity blocker resolve` from an unclaimed integration checkout before retrying. Do not silently rewrite a fact's claim to make it fresh.
+- Before changing an area, run continuity recall --path <file>. Claude Code and Codex hooks show linked decisions and pitfalls when a file is read or edited. For "why" questions or a topic, run continuity recall <words>.
+- Follow current decisions. To change one, add a record that supersedes it with the record-decisions skill; a decision the user made changes only with the user's approval.
+- When the user states or approves a decision, record it during the session with the record-decisions skill.
+- Work only on open outcomes of the active milestone. Mark an outcome [x] after its acceptance is verified. Ask the user before adding or changing outcomes or milestones; with no active milestone, ask what comes next.
+- Record a lasting failed approach under Known Pitfalls with its evidence paths in backticks. Add a Fact Card only for a fact later work relies on; a stale fact needs a review and continuity fact confirm.
 
-`CONTINUITY_POLICY.md` is an optional committed list of user-approved finalization commands. Add a command only after explicit user approval with `continuity policy add --approved ...`; relevant checks run automatically during `continuity finalize`. If one fails, inspect it and checkpoint the claim; do not create a completion or retry unchanged evidence. Read [governance-schema.md](references/governance-schema.md) before adding a fact, policy, or blocker.
+## Hand off
 
-## Intake and plan approval
+Before ending, update the Handoff section: what was done, what is in progress, and the exact next step. Update the Code Map, capsules, pitfalls, and facts your work changed, run continuity sync, and commit. If no decision record was needed, say so.
 
-If `PROJECT_PLAN.md` is a draft, inspect the repository and interview the user one decision at a time. Ask only for product choices that cannot be discovered locally, always give a recommendation, and capture compact facts rather than raw chat. Do not claim implementation work until the user explicitly approves the active milestone through `continuity plan approve --approved --milestone M-001`.
-
-If the plan is approved, treat its active milestone and outcomes as the product boundary. Record product, priority, constraint, or milestone changes as plan deltas; do not silently extend scope. Read [plan-schema.md](references/plan-schema.md) before changing plan structure or approval state.
-
-## Execute
-
-Before editing, run `continuity start` with a stable harness owner ID. Planned tasks must link to an active approved outcome and carry a focused scope plus validation command; `start` defaults those fields from the task and requires `--selection-reason`. One worktree and one named branch have one writer; claims reject duplicate tasks, shared branches, and overlapping scopes in separate worktrees. From an unclaimed integration worktree, use `continuity task add --approved ...` for a user-specified task, or `continuity task add --derived --outcome O-001 --scope path --validates command --rationale text ...` for a needed technical subtask wholly inside an active approved outcome. The latter immediately commits the queue record; neither route authorizes new product work.
-
-Honor the task contract. Checkpoint material progress, validation, or blockers with `continuity checkpoint`. Do not edit `PROJECT_STATE.md` as a live scratchpad; active progress belongs to the claim record.
-
-## Complete and integrate
-
-Run focused validation, commit the worker result, then finalize with the commit and factual evidence. Relevant approved policies run before the completion is recorded. A completion remains pending until its commit is present in the integration checkout. After merge or handoff, run `continuity integrate --id <task>` to update the durable index and unblock dependencies. Integration derives actual changed paths from the claim's Git range, ages affected fresh Fact Cards, writes `PROJECT_HISTORY/changes/<task>.md`, compacts archive-backed task and evidence repetition, keeps at most three short path-scoped change capsules active, and gives the handoff the actual next safe task or gate. Commit the state and generated archive together. Once every task linked to an active outcome is integrated, run `continuity plan outcome complete --id <outcome> --evidence 'verification: pass'`; milestone activation archives its completed outcome set.
-
-Keep context bounded: use `continuity context --scope <task path>` first, then read only the matching Context Capsules, relevant state section, and mapped code. The durable index may hold approximately 30k tokens; routine startup must not load it wholesale. Read [state-schema.md](references/state-schema.md) when changing state structure or resolving ownership, freshness, or integration questions.
-
-Worktrunk is optional. Its reviewed orientation hook template and parallel-worker workflow live in [../../worktrunk/README.md](../../worktrunk/README.md); plain Git remains the required baseline.
+Never store raw chats, reasoning, source code, secrets, or untrusted multiline text. Read references/state-schema.md and references/plan-schema.md for exact formats.

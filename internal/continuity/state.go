@@ -51,7 +51,7 @@ type Validation struct {
 
 // ContextCapsule is a path-indexed, durable piece of project knowledge. It
 // keeps a larger project index navigable: a session receives only capsules
-// relevant to its claimed or requested scope rather than the entire state.
+// relevant to its requested scope rather than the entire state.
 type ContextCapsule struct {
 	Name    string
 	Paths   []string

@@ -1,21 +1,10 @@
-# Delivery plan schema
+# Plan schema
 
-`PROJECT_PLAN.md` is the committed detailed delivery contract. Its front matter contains `schema`, `status`, `active_milestone`, `approved_at`, and `updated_at`.
+PROJECT_PLAN.md has front matter with schema: 2 and exactly three sections: Intent, Milestones, and Outcomes. File order is priority.
 
-Required sections are `Intent`, `Sources`, `Milestones`, `Outcomes`, `Constraints`, `Assumptions`, `Decisions`, and `Deltas`.
+    - [ ] M-001 | title: Local storage | accepts: Data survives a restart.
+    - [ ] O-001 | milestone: M-001 | title: Persist sessions | accepts: A restarted process reads earlier sessions.
 
-The plan remains a draft until a user explicitly approves an executable milestone with:
+A milestone is planned [ ], active [>], or done [x]; at most one is active. An outcome is open [ ] or done [x]. continuity context shows the active milestone's open outcomes as the next work.
 
-```text
-continuity plan approve --approved --milestone M-001
-```
-
-The intake agent inspects repository facts, interviews the user one decision at a time, and stores only compact distilled facts—never raw chat. High-impact open decisions that affect the selected milestone block approval.
-
-Milestones group user-visible outcomes. Later implementation tasks must link to an active approved outcome. Their task records carry a focused repository-relative scope contained by the outcome scope, an observable acceptance condition, and a validation command:
-
-```text
-- [ ] T-001 | focused technical step | outcome: O-001 | scope: internal/auth | depends: none | autonomous: yes | validates: go test ./internal/auth | accepts: Focused tests pass. | derived: Why this is the best next technical step.
-```
-
-`continuity ready` ranks unclaimed ready tasks using outcome priority and direct dependency unblocking evidence. A planned `continuity start` requires a one-line `--selection-reason`; its task contract supplies goal, scope, acceptance, and validation by default. From an unclaimed integration checkout, an agent may add a necessary technical task with `continuity task add --derived ...` only when it names the active outcome, remains within its scope, has validation, and records a rationale. The command commits that queue record immediately. Product, priority, constraint, and milestone changes still require plan deltas. After every linked task is integrated, `continuity plan outcome complete --id O-001 --evidence 'verification: pass'` records an evidence-backed outcome archive. `continuity plan activate --approved --milestone M-002` snapshots the completed milestone before switching active context. Completed history is preserved under `PROJECT_HISTORY/`; `PROJECT_STATE.md` retains only the compact active projection.
+Agents mark an outcome [x] after its acceptance is verified. Only the user adds or changes outcomes and milestones or chooses the active one. An empty plan means: interview the user one decision at a time, with a recommendation each time, and draft milestones and outcomes for approval.

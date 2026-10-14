@@ -1,3 +1,3 @@
 # Continuity adapter
 
-Read and follow `AGENTS.md` before any non-trivial task. Use `PROJECT_STATE.md` and the `continuity` CLI as the durable cross-harness state; do not rely on chat memory as project authority.
+Read and follow AGENTS.md before non-trivial work. Run continuity context first; PROJECT_PLAN.md, docs/adr, and PROJECT_STATE.md are the shared project memory, not chat history.
