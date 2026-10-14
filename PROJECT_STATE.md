@@ -2,10 +2,10 @@
 schema: 2
 fingerprint: sha256:b45f1aaaece3c897809a1ec641f950d770a43c3505bf86534a49d3cd9259cec4
 branch: main
-head: f9f1aacec3bcc562fd6e6de3606adc32d79b2b60
+head: 1d9855546911f744136395f8cb721bad18a354e3
 status: ready
 active_task: none
-updated_at: 2026-10-14T18:29:46Z
+updated_at: 2026-10-14T18:30:08Z
 ---
 
 # Continuity
@@ -50,6 +50,7 @@ Validation: none
 - [x] T-014 | Audit and harden existing continuity implementation | depends: none | autonomous: yes | accepts: Existing behavior is audited against the original intent; only evidenced defects are corrected; focused tests, race tests, and vet pass.
 - [x] T-015 | Align generated handoffs with restart index | depends: T-014 | autonomous: yes | accepts: Generated no-work and next-task handoffs direct fresh agents through continuity context without restoring redundant startup commands.
 - [x] T-016 | Harden bounded context and state density | depends: T-015 | autonomous: yes | accepts: Cold-start context never hides gates or recommends blocked work, durable state compacts repetitive history without losing archives, and AGENTS.md remains a minimal cross-harness bootloader.
+- [ ] T-017 | Make past decisions known to every new session | depends: none | autonomous: yes | accepts: Decisions live as ADR files in docs/adr; continuity context lists current decisions and omits superseded ones; Claude Code and Codex hooks show decisions linked to a touched file once per session; continuity recall finds decisions, pitfalls, history, and commit messages; focused tests, race tests, and vet pass.
 ## Active Decisions
 
 - D-001 — Keep committed durable project knowledge in `PROJECT_STATE.md`; Git is the archive. Keep short-lived same-machine ownership outside that file. Why: a bounded current projection avoids both vendor lock-in and transcript bloat without turning progress pings into merge conflicts. Evidence: `internal/continuity/state.go`, `internal/continuity/coordination.go`.
