@@ -11,6 +11,7 @@ import (
 )
 
 const (
+	PitfallsSection             = "Known Pitfalls and Failed Approaches"
 	StateFilename               = "PROJECT_STATE.md"
 	CurrentStateSchema          = "3"
 	ApproximateStateTokenBudget = 30_000
@@ -353,13 +354,7 @@ func (s *State) EvidencePaths() []string {
 	seen := map[string]bool{}
 	paths := []string{}
 	for _, section := range sections {
-		fragments := strings.Split(s.Section(section), "`")
-		for index := 1; index < len(fragments); index += 2 {
-			fragment := fragments[index]
-			if !looksLikePath(fragment) {
-				continue
-			}
-			path := filepath.ToSlash(filepath.Clean(fragment))
+		for _, path := range EvidencePathsIn(s.Section(section)) {
 			if !seen[path] {
 				seen[path] = true
 				paths = append(paths, path)
@@ -381,6 +376,42 @@ func (s *State) EvidencePaths() []string {
 	}
 	sort.Strings(paths)
 	return paths
+}
+
+// EvidencePathsIn returns the backticked fragments of text that look like
+// repository-relative paths, in order of appearance.
+func EvidencePathsIn(text string) []string {
+	paths := []string{}
+	fragments := strings.Split(text, "`")
+	for index := 1; index < len(fragments); index += 2 {
+		if looksLikePath(fragments[index]) {
+			paths = append(paths, filepath.ToSlash(filepath.Clean(fragments[index])))
+		}
+	}
+	return paths
+}
+
+// Bullets returns the text of each top-level "- " line in a section.
+func (s *State) Bullets(section string) []string {
+	bullets := []string{}
+	for _, line := range strings.Split(s.Section(section), "\n") {
+		if text, found := strings.CutPrefix(line, "- "); found && strings.TrimSpace(text) != "" {
+			bullets = append(bullets, strings.TrimSpace(text))
+		}
+	}
+	return bullets
+}
+
+// PitfallsForPaths returns Known Pitfalls whose backticked evidence paths
+// overlap any of the given repository-relative paths.
+func (s *State) PitfallsForPaths(paths []string) []string {
+	matches := []string{}
+	for _, pitfall := range s.Bullets(PitfallsSection) {
+		if evidence := EvidencePathsIn(pitfall); len(evidence) > 0 && anyPathsOverlap(evidence, paths) {
+			matches = append(matches, pitfall)
+		}
+	}
+	return matches
 }
 
 // ContextCapsules parses the Context Capsules section. Each capsule has a

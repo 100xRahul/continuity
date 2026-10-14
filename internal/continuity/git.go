@@ -269,6 +269,39 @@ func ChangedPathsBetween(directory, base, commit string) ([]string, error) {
 	return paths, nil
 }
 
+type CommitMessage struct {
+	Hash    string
+	Date    string
+	Subject string
+	Body    string
+}
+
+// RecentCommitMessages returns up to limit commit messages reachable from
+// HEAD, newest first, optionally limited to commits that touched paths. A
+// repository without commits has no messages.
+func RecentCommitMessages(directory string, limit int, paths ...string) ([]CommitMessage, error) {
+	if _, err := git(directory, "rev-parse", "--verify", "--quiet", "HEAD"); err != nil {
+		return nil, nil
+	}
+	args := []string{"log", fmt.Sprintf("--max-count=%d", limit), "--date=short", "--format=%h%x1f%ad%x1f%s%x1f%b%x1e"}
+	if len(paths) > 0 {
+		args = append(append(args, "--"), paths...)
+	}
+	output, err := git(directory, args...)
+	if err != nil {
+		return nil, err
+	}
+	messages := []CommitMessage{}
+	for _, record := range strings.Split(output, "\x1e") {
+		fields := strings.Split(strings.TrimLeft(record, "\n"), "\x1f")
+		if len(fields) != 4 {
+			continue
+		}
+		messages = append(messages, CommitMessage{Hash: fields[0], Date: fields[1], Subject: fields[2], Body: strings.TrimSpace(fields[3])})
+	}
+	return messages, nil
+}
+
 // CommitIsAncestor reports whether revision has been integrated into the
 // current checkout's HEAD. A false result with no error is an ordinary
 // non-ancestor, not a Git failure.

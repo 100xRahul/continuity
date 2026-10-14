@@ -50,6 +50,8 @@ func main() {
 		err = statusCommand(os.Args[2:])
 	case "context":
 		err = contextCommand(os.Args[2:])
+	case "recall":
+		err = recallCommand(os.Args[2:])
 	case "heartbeat":
 		err = heartbeatCommand(os.Args[2:])
 	case "release":
@@ -111,6 +113,8 @@ Usage:
   continuity blocker add|resolve|status ... [--repo .]
   continuity status [--repo .]
   continuity context [--session codex-session-id|--owner harness:id] [--scope path,...] [--limit bytes] [--repo .]
+  continuity recall <words> [--limit 8] [--repo .]
+  continuity recall --path file[,file...] [--repo .]
   continuity heartbeat [--id T-001] --session id [--repo .]
   continuity release [--id T-001] --session id [--repo .]
   continuity recover-lock --force [--repo .]
