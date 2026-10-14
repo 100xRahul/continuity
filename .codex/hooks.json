@@ -7,7 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh \"$(git rev-parse --show-toplevel)/.codex/hooks/continuity.sh\" session-start",
+            "command": "sh \"$(git rev-parse --show-toplevel)/.agents/hooks/continuity.sh\" codex session-start",
             "statusMessage": "Loading shared Continuity status",
             "timeout": 10,
             "additionalContextLimit": 1800
@@ -21,7 +21,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh \"$(git rev-parse --show-toplevel)/.codex/hooks/continuity.sh\" subagent-start",
+            "command": "sh \"$(git rev-parse --show-toplevel)/.agents/hooks/continuity.sh\" codex subagent-start",
             "statusMessage": "Loading shared Continuity status",
             "timeout": 10,
             "additionalContextLimit": 1800
@@ -34,7 +34,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh \"$(git rev-parse --show-toplevel)/.codex/hooks/continuity.sh\" user-prompt",
+            "command": "sh \"$(git rev-parse --show-toplevel)/.agents/hooks/continuity.sh\" codex user-prompt",
             "statusMessage": "Refreshing shared Continuity status",
             "timeout": 10,
             "additionalContextLimit": 700
@@ -48,7 +48,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh \"$(git rev-parse --show-toplevel)/.codex/hooks/continuity.sh\" pretool",
+            "command": "sh \"$(git rev-parse --show-toplevel)/.agents/hooks/continuity.sh\" codex pretool",
             "statusMessage": "Checking worktree claim",
             "timeout": 10
           }

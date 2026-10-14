@@ -95,7 +95,7 @@ Validation: none
 - Delivery plan — `internal/continuity/plan.go`, `cmd/continuity/plan.go` — structured Markdown roadmap, sources, outcomes, decisions, explicit approval, evidence-backed outcome completion, milestone archiving, and plan deltas.
 - Evidence gates — `internal/continuity/facts.go`, `internal/continuity/policy.go`, `cmd/continuity/governance.go`, `cmd/continuity/policy.go` — source-linked fact aging, durable blocker cards, explicitly approved scoped finalization checks, and gate-aware handoffs.
 - Adapter installer — `internal/continuity/adapters.go` — non-overwriting scaffolding, idempotent marked text bridges, and schema-aware Codex/OpenCode merges that connect existing harness configuration to the shared protocol.
-- Codex adapter — `.codex/hooks.json`, `.codex/hooks/continuity.sh` — optional session context and pre-write guardrails after project trust.
+- Codex adapter — `.codex/hooks.json`, `.agents/hooks/continuity.sh` — optional session context and pre-write guardrails after project trust; the shared script runs `continuity hook <harness> <phase>`.
 - Tests — `internal/continuity/*_test.go` — state round trip, fingerprint exclusions, task readiness, and cycles.
 
 ## Context Capsules

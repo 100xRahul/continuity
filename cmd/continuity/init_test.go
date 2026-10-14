@@ -35,7 +35,7 @@ func TestInitCreatesFreshScaffoldedRepository(t *testing.T) {
 		".github/copilot-instructions.md",
 		".cursor/rules/project-continuity.mdc",
 		".codex/hooks.json",
-		".codex/hooks/continuity.sh",
+		".agents/hooks/continuity.sh",
 		".agents/worktrunk/README.md",
 		".agents/worktrunk/wt.toml.example",
 		"opencode.json",

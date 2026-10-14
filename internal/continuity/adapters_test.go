@@ -16,7 +16,7 @@ func TestCrossHarnessAdaptersPointToSharedProtocol(t *testing.T) {
 		".github/copilot-instructions.md":            {"@AGENTS.md", "project-continuity"},
 		".cursor/rules/project-continuity.mdc":       {"AGENTS.md", "PROJECT_STATE.md"},
 		".codex/hooks.json":                          {"SessionStart", "SubagentStart", "UserPromptSubmit", "PreToolUse", "continuity.sh"},
-		".codex/hooks/continuity.sh":                 {"codex-hook", "continuity"},
+		".agents/hooks/continuity.sh":                {"continuity hook \"$harness\" \"$phase\""},
 		"opencode.json":                              {"AGENTS.md"},
 		".agents/skills/project-continuity/SKILL.md": {"name: project-continuity", "PROJECT_PLAN.md", "continuity context", "continuity integrate"},
 		".agents/skills/project-continuity/references/plan-schema.md":       {"PROJECT_PLAN.md", "active_milestone", "plan approve"},
@@ -135,7 +135,7 @@ func TestInstallAdaptersConnectsExistingInstructionsWithoutOverwriting(t *testin
 	}
 	for _, path := range []string{
 		".cursor/rules/project-continuity.mdc",
-		".codex/hooks/continuity.sh",
+		".agents/hooks/continuity.sh",
 		".agents/skills/project-continuity/SKILL.md",
 		".agents/skills/project-continuity/references/plan-schema.md",
 		".agents/skills/project-continuity/references/governance-schema.md",

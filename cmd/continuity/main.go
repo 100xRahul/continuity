@@ -64,8 +64,8 @@ func main() {
 		err = finalizeCommand(os.Args[2:])
 	case "integrate":
 		err = integrateCommand(os.Args[2:])
-	case "codex-hook":
-		err = codexHookCommand(os.Args[2:])
+	case "hook":
+		err = hookCommand(os.Args[2:])
 	case "version", "--version", "-v":
 		fmt.Println("continuity", version)
 		return
@@ -118,7 +118,7 @@ Usage:
   continuity checkpoint --summary text --next-action text --session id|--owner id [--id T-001] [--risk text] [--repo .]
   continuity finalize [--id T-001] --commit revision --summary text --evidence 'command: result; command: result' [--session id|--owner id] [--repo .]
   continuity integrate --id T-001 [--repo .]
-  continuity codex-hook session-start|subagent-start|user-prompt|pretool
+  continuity hook codex session-start|subagent-start|user-prompt|pretool
 
 The state file is the portable shared memory. The CLI validates facts; agents and users maintain meaning.`)
 }

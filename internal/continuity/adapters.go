@@ -85,7 +85,7 @@ func InstallAdapters(root string) (InstallReport, error) {
 
 	files := map[string]string{
 		".cursor/rules/project-continuity.mdc":                              cursorTemplate,
-		".codex/hooks/continuity.sh":                                        codexHookScriptTemplate,
+		".agents/hooks/continuity.sh":                                       hookScriptTemplate,
 		".agents/skills/project-continuity/SKILL.md":                        skillTemplate,
 		".agents/skills/project-continuity/agents/openai.yaml":              skillMetadataTemplate,
 		".agents/skills/project-continuity/references/state-schema.md":      skillSchemaTemplate,
@@ -439,7 +439,7 @@ const codexHooksTemplate = `{
         "hooks": [
           {
             "type": "command",
-            "command": "sh \"$(git rev-parse --show-toplevel)/.codex/hooks/continuity.sh\" session-start",
+            "command": "sh \"$(git rev-parse --show-toplevel)/.agents/hooks/continuity.sh\" codex session-start",
             "statusMessage": "Loading shared Continuity status",
             "timeout": 10,
             "additionalContextLimit": 1800
@@ -453,7 +453,7 @@ const codexHooksTemplate = `{
         "hooks": [
           {
             "type": "command",
-            "command": "sh \"$(git rev-parse --show-toplevel)/.codex/hooks/continuity.sh\" subagent-start",
+            "command": "sh \"$(git rev-parse --show-toplevel)/.agents/hooks/continuity.sh\" codex subagent-start",
             "statusMessage": "Loading shared Continuity status",
             "timeout": 10,
             "additionalContextLimit": 1800
@@ -466,7 +466,7 @@ const codexHooksTemplate = `{
         "hooks": [
           {
             "type": "command",
-            "command": "sh \"$(git rev-parse --show-toplevel)/.codex/hooks/continuity.sh\" user-prompt",
+            "command": "sh \"$(git rev-parse --show-toplevel)/.agents/hooks/continuity.sh\" codex user-prompt",
             "statusMessage": "Refreshing shared Continuity status",
             "timeout": 10,
             "additionalContextLimit": 700
@@ -480,7 +480,7 @@ const codexHooksTemplate = `{
         "hooks": [
           {
             "type": "command",
-            "command": "sh \"$(git rev-parse --show-toplevel)/.codex/hooks/continuity.sh\" pretool",
+            "command": "sh \"$(git rev-parse --show-toplevel)/.agents/hooks/continuity.sh\" codex pretool",
             "statusMessage": "Checking worktree claim",
             "timeout": 10
           }
@@ -491,23 +491,24 @@ const codexHooksTemplate = `{
 }
 `
 
-const codexHookScriptTemplate = `#!/bin/sh
+const hookScriptTemplate = `#!/bin/sh
 set -eu
 
-phase="${1:?hook phase is required}"
+harness="${1:?harness is required}"
+phase="${2:?hook phase is required}"
 root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
 if [ -z "$root" ]; then
   exit 0
 fi
 
 if command -v continuity >/dev/null 2>&1; then
-  exec continuity codex-hook "$phase" --repo "$root"
+  exec continuity hook "$harness" "$phase" --repo "$root"
 fi
 
 # This fallback makes the source repository self-hosting during development.
 if [ -f "$root/go.mod" ] && [ -d "$root/cmd/continuity" ]; then
   cd "$root"
-  exec go run ./cmd/continuity codex-hook "$phase" --repo "$root"
+  exec go run ./cmd/continuity hook "$harness" "$phase" --repo "$root"
 fi
 
 exit 0

@@ -386,7 +386,7 @@ func TestCodexBashGuardAllowsInspectionAndBlocksUnownedWrites(t *testing.T) {
 }
 
 func TestCodexHookInputExtractsBashCommand(t *testing.T) {
-	input := codexHookInput{ToolInput: []byte(`{"command":"git status --short"}`)}
+	input := hookInput{ToolInput: []byte(`{"command":"git status --short"}`)}
 	if got := input.bashCommand(); got != "git status --short" {
 		t.Fatalf("bash command = %q", got)
 	}

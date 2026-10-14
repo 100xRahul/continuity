@@ -715,25 +715,28 @@ func integrateCommand(args []string) error {
 	return nil
 }
 
-type codexHookInput struct {
+type hookInput struct {
 	SessionID string          `json:"session_id"`
 	Cwd       string          `json:"cwd"`
 	ToolName  string          `json:"tool_name"`
 	ToolInput json.RawMessage `json:"tool_input"`
 }
 
-func codexHookCommand(args []string) error {
-	if len(args) == 0 {
-		return errors.New("codex-hook requires session-start, subagent-start, user-prompt, or pretool")
+func hookCommand(args []string) error {
+	if len(args) < 2 {
+		return errors.New("usage: continuity hook codex session-start|subagent-start|user-prompt|pretool")
 	}
-	phase := args[0]
-	flags := flag.NewFlagSet("codex-hook "+phase, flag.ContinueOnError)
+	harness, phase := args[0], args[1]
+	if harness != "codex" {
+		return fmt.Errorf("unknown hook harness %q", harness)
+	}
+	flags := flag.NewFlagSet("hook "+harness+" "+phase, flag.ContinueOnError)
 	flags.SetOutput(os.Stderr)
 	repo := flags.String("repo", "", "repository path")
-	if err := flags.Parse(args[1:]); err != nil {
+	if err := flags.Parse(args[2:]); err != nil {
 		return err
 	}
-	input := codexHookInput{}
+	input := hookInput{}
 	if err := json.NewDecoder(os.Stdin).Decode(&input); err != nil && !errors.Is(err, io.EOF) {
 		return err
 	}
@@ -784,7 +787,7 @@ func codexHookCommand(args []string) error {
 		}
 		return nil
 	default:
-		return fmt.Errorf("unknown codex hook phase %q", phase)
+		return fmt.Errorf("unknown %s hook phase %q", harness, phase)
 	}
 }
 
@@ -801,7 +804,7 @@ func heartbeatOwnedClaim(root, owner string) {
 	}
 }
 
-func (input codexHookInput) bashCommand() string {
+func (input hookInput) bashCommand() string {
 	var tool struct {
 		Command string `json:"command"`
 	}
