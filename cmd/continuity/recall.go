@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"flag"
 	"fmt"
@@ -40,7 +42,7 @@ func recallCommand(args []string) error {
 		if err != nil {
 			return err
 		}
-		report, err := pathRecall(root, paths, nil)
+		report, _, err := pathRecall(root, paths, nil)
 		if err != nil {
 			return err
 		}
@@ -76,29 +78,33 @@ func recallCommand(args []string) error {
 }
 
 // pathRecall renders the current decisions, pitfalls, and facts linked to
-// paths. When shown is not nil, records it already contains are skipped and
-// newly rendered ones are added, so a hook repeats nothing within a session.
-func pathRecall(root string, paths []string, shown map[string]bool) (string, error) {
+// paths. With a shown set it skips records already shown and returns the keys
+// of the records it adds, so a hook repeats nothing within a session.
+func pathRecall(root string, paths []string, shown map[string]bool) (string, []string, error) {
 	decisions, _, err := continuity.LoadDecisions(root)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	state, err := loadState(root)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	facts, err := state.FactCards()
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
-	fresh := func(key string) bool {
+	added := []string{}
+	fresh := func(record string) bool {
 		if shown == nil {
 			return true
 		}
+		sum := sha256.Sum256([]byte(record))
+		key := hex.EncodeToString(sum[:8])
 		if shown[key] {
 			return false
 		}
 		shown[key] = true
+		added = append(added, key)
 		return true
 	}
 	target := strings.Join(paths, ", ")
@@ -129,7 +135,7 @@ func pathRecall(root string, paths []string, shown map[string]bool) (string, err
 		}
 	}
 	section("Facts for", lines)
-	return report.String(), nil
+	return report.String(), added, nil
 }
 
 // recallDocuments gathers every durable memory record keyword recall ranks:

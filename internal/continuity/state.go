@@ -379,13 +379,17 @@ func (s *State) EvidencePaths() []string {
 }
 
 // EvidencePathsIn returns the backticked fragments of text that look like
-// repository-relative paths, in order of appearance.
+// repository-relative paths, in order of appearance. A bare "." names the
+// repository root in prose, not a piece of evidence, so it is skipped.
 func EvidencePathsIn(text string) []string {
 	paths := []string{}
 	fragments := strings.Split(text, "`")
 	for index := 1; index < len(fragments); index += 2 {
-		if looksLikePath(fragments[index]) {
-			paths = append(paths, filepath.ToSlash(filepath.Clean(fragments[index])))
+		if !looksLikePath(fragments[index]) {
+			continue
+		}
+		if path := filepath.ToSlash(filepath.Clean(fragments[index])); path != "." {
+			paths = append(paths, path)
 		}
 	}
 	return paths

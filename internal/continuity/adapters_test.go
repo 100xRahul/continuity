@@ -15,7 +15,8 @@ func TestCrossHarnessAdaptersPointToSharedProtocol(t *testing.T) {
 		"GEMINI.md":                                  {"AGENTS.md", "PROJECT_STATE.md"},
 		".github/copilot-instructions.md":            {"@AGENTS.md", "project-continuity"},
 		".cursor/rules/project-continuity.mdc":       {"AGENTS.md", "PROJECT_STATE.md"},
-		".codex/hooks.json":                          {"SessionStart", "SubagentStart", "UserPromptSubmit", "PreToolUse", "continuity.sh"},
+		".codex/hooks.json":                          {"SessionStart", "SubagentStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "continuity.sh\\\" codex posttool"},
+		".claude/settings.json":                      {"SessionStart", "PostToolUse", "continuity.sh", "\"claude\", \"posttool\""},
 		".agents/hooks/continuity.sh":                {"continuity hook \"$harness\" \"$phase\""},
 		"opencode.json":                              {"AGENTS.md"},
 		".agents/skills/project-continuity/SKILL.md": {"name: project-continuity", "PROJECT_PLAN.md", "continuity context", "continuity integrate"},
@@ -81,8 +82,9 @@ func TestInstallAdaptersConnectsExistingInstructionsWithoutOverwriting(t *testin
 		}
 	}
 	existingJSON := map[string]string{
-		".codex/hooks.json": `{"custom":"keep","hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"custom-hook"}]}]}}`,
-		"opencode.json":     `{"theme":"keep","instructions":["EXISTING.md"]}`,
+		".codex/hooks.json":     `{"custom":"keep","hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"custom-hook"}]}]}}`,
+		".claude/settings.json": `{"permissions":{"allow":["Bash(ls)"]},"hooks":{"PostToolUse":[{"matcher":"Write","hooks":[{"type":"command","command":"custom-format"}]}]}}`,
+		"opencode.json":         `{"theme":"keep","instructions":["EXISTING.md"]}`,
 	}
 	for path, content := range existingJSON {
 		full := filepath.Join(root, path)
@@ -121,6 +123,9 @@ func TestInstallAdaptersConnectsExistingInstructionsWithoutOverwriting(t *testin
 		text := string(contents)
 		if path == ".codex/hooks.json" && (!strings.Contains(text, `"custom": "keep"`) || !strings.Contains(text, "custom-hook") || !strings.Contains(text, "continuity.sh")) {
 			t.Fatalf("Codex hooks were not merged safely; original=%s updated=%s", original, text)
+		}
+		if path == ".claude/settings.json" && (!strings.Contains(text, `"Bash(ls)"`) || !strings.Contains(text, "custom-format") || strings.Count(text, "continuity.sh") != 2) {
+			t.Fatalf("Claude Code settings were not merged safely; original=%s updated=%s", original, text)
 		}
 		if path == "opencode.json" && (!strings.Contains(text, `"theme": "keep"`) || !strings.Contains(text, "EXISTING.md") || !strings.Contains(text, "AGENTS.md")) {
 			t.Fatalf("OpenCode instructions were not merged safely; original=%s updated=%s", original, text)
@@ -167,7 +172,7 @@ func TestInstallAdaptersConnectsExistingInstructionsWithoutOverwriting(t *testin
 		if readErr != nil {
 			t.Fatal(readErr)
 		}
-		if path == ".codex/hooks.json" && strings.Count(string(contents), "continuity.sh") != 4 {
+		if path == ".codex/hooks.json" && strings.Count(string(contents), "continuity.sh") != 5 {
 			t.Fatalf("Continuity hooks in %s were duplicated: %s", path, contents)
 		}
 		if path == "opencode.json" && strings.Count(string(contents), "AGENTS.md") != 1 {

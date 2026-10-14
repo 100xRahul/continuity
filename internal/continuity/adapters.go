@@ -56,8 +56,9 @@ func InstallAdapters(root string) (InstallReport, error) {
 		template string
 		merge    func(map[string]json.RawMessage) (bool, error)
 	}{
-		".codex/hooks.json": {codexHooksTemplate, mergeCodexHooks},
-		"opencode.json":     {openCodeTemplate, mergeOpenCodeInstructions},
+		".claude/settings.json": {claudeSettingsTemplate, mergeHooks(claudeSettingsTemplate)},
+		".codex/hooks.json":     {codexHooksTemplate, mergeHooks(codexHooksTemplate)},
+		"opencode.json":         {openCodeTemplate, mergeOpenCodeInstructions},
 	}
 	structuredPaths := make([]string, 0, len(structuredFiles))
 	for path := range structuredFiles {
@@ -293,9 +294,21 @@ func mergeOpenCodeInstructions(document map[string]json.RawMessage) (bool, error
 	return true, nil
 }
 
-func mergeCodexHooks(document map[string]json.RawMessage) (bool, error) {
+// hookScriptMarker identifies hook entries that already run Continuity, so a
+// merge never adds a second entry for the same event.
+const hookScriptMarker = "/.agents/hooks/continuity.sh"
+
+// mergeHooks adds the template's hook groups for every event that does not
+// already run Continuity, keeping the user's other settings and hooks.
+func mergeHooks(template string) func(map[string]json.RawMessage) (bool, error) {
+	return func(document map[string]json.RawMessage) (bool, error) {
+		return mergeHookGroups(document, template)
+	}
+}
+
+func mergeHookGroups(document map[string]json.RawMessage, template string) (bool, error) {
 	desired := map[string]json.RawMessage{}
-	if err := json.Unmarshal([]byte(codexHooksTemplate), &desired); err != nil {
+	if err := json.Unmarshal([]byte(template), &desired); err != nil {
 		return false, err
 	}
 	desiredHooks := map[string]json.RawMessage{}
@@ -321,7 +334,7 @@ func mergeCodexHooks(document map[string]json.RawMessage) (bool, error) {
 		}
 		connected := false
 		for _, group := range existingGroups {
-			if strings.Contains(string(group), "continuity.sh") {
+			if strings.Contains(string(group), hookScriptMarker) {
 				connected = true
 				break
 			}
@@ -449,7 +462,7 @@ const codexHooksTemplate = `{
             "command": "sh \"$(git rev-parse --show-toplevel)/.agents/hooks/continuity.sh\" codex session-start",
             "statusMessage": "Loading shared Continuity status",
             "timeout": 10,
-            "additionalContextLimit": 1800
+            "additionalContextLimit": 2000
           }
         ]
       }
@@ -463,7 +476,7 @@ const codexHooksTemplate = `{
             "command": "sh \"$(git rev-parse --show-toplevel)/.agents/hooks/continuity.sh\" codex subagent-start",
             "statusMessage": "Loading shared Continuity status",
             "timeout": 10,
-            "additionalContextLimit": 1800
+            "additionalContextLimit": 2000
           }
         ]
       }
@@ -493,32 +506,77 @@ const codexHooksTemplate = `{
           }
         ]
       }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "^(Bash|apply_patch|Edit|Write)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"$(git rev-parse --show-toplevel)/.agents/hooks/continuity.sh\" codex posttool",
+            "statusMessage": "Loading linked decisions",
+            "timeout": 10,
+            "additionalContextLimit": 1500
+          }
+        ]
+      }
+    ]
+  }
+}
+`
+
+const claudeSettingsTemplate = `{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh",
+            "args": ["${CLAUDE_PROJECT_DIR}/.agents/hooks/continuity.sh", "claude", "session-start"],
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Read|Edit|Write|NotebookEdit|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh",
+            "args": ["${CLAUDE_PROJECT_DIR}/.agents/hooks/continuity.sh", "claude", "posttool"],
+            "timeout": 10
+          }
+        ]
+      }
     ]
   }
 }
 `
 
 const hookScriptTemplate = `#!/bin/sh
+# Runs one Continuity hook phase. The harness sends the hook JSON on stdin,
+# including the session's working directory.
 set -eu
 
 harness="${1:?harness is required}"
 phase="${2:?hook phase is required}"
-root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
-if [ -z "$root" ]; then
-  exit 0
-fi
 
 if command -v continuity >/dev/null 2>&1; then
-  exec continuity hook "$harness" "$phase" --repo "$root"
+  exec continuity hook "$harness" "$phase"
 fi
 
-# This fallback makes the source repository self-hosting during development.
-if [ -f "$root/go.mod" ] && [ -d "$root/cmd/continuity" ]; then
-  cd "$root"
-  exec go run ./cmd/continuity hook "$harness" "$phase" --repo "$root"
+# The Continuity source repository runs its own hooks without an installed binary.
+source_root="$(cd "$(dirname "$0")/../.." && pwd)"
+if [ -f "$source_root/go.mod" ] && [ -d "$source_root/cmd/continuity" ] && command -v go >/dev/null 2>&1; then
+  cd "$source_root"
+  exec go run ./cmd/continuity hook "$harness" "$phase"
 fi
 
-exit 0
+echo "continuity is not installed: this session gets no project decisions or context. Install it and put it on PATH." >&2
+exit 1
 `
 
 const openCodeTemplate = `{

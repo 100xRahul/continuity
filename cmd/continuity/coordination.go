@@ -8,8 +8,10 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
+	"unicode"
 
 	"continuity/internal/continuity"
 )
@@ -171,7 +173,7 @@ func contextCommand(args []string) error {
 	session := flags.String("session", "", "Codex session ID (adapter convenience)")
 	owner := flags.String("owner", "", "stable harness-neutral worker identity")
 	scope := flags.String("scope", "", "comma-separated repository paths whose durable capsules should be selected")
-	limit := flags.Int("limit", 3200, "maximum context bytes")
+	limit := flags.Int("limit", sessionStartContextLimit, "maximum context bytes")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -346,6 +348,16 @@ func compactContext(root, owner string, limit int, requestedScopes []string) (st
 	if plan != nil {
 		sections = append(sections, contextPacketSection{full: "\n" + renderPlanContext(plan, selectionScopes)})
 	}
+	decisions, decisionProblems, err := continuity.LoadDecisions(root)
+	if err != nil {
+		return "", fmt.Errorf("load decision records: %w", err)
+	}
+	if len(decisionProblems) > 0 {
+		fmt.Fprintf(&critical, "Decision records need repair; continuity check lists them: %s\n", singleLineSnippet(strings.Join(decisionProblems, "; "), 300))
+	}
+	if section, ok := decisionIndexSection(continuity.CurrentDecisions(decisions), selectionScopes, limit); ok {
+		sections = append(sections, section)
+	}
 	if facts, factErr := state.FactCards(); factErr != nil {
 		return "", fmt.Errorf("read Fact Cards: %w", factErr)
 	} else if stale := continuity.StaleFactCardsForScopes(facts, selectionScopes); len(stale) > 0 {
@@ -388,6 +400,54 @@ func compactContext(root, owner string, limit int, requestedScopes []string) (st
 	}
 	sections = append(sections, contextPacketSection{full: "Use the durable state for decisions; use the live claim board for concurrent ownership.\n"})
 	return assembleContextPacket(limit, critical.String(), sections)
+}
+
+// decisionIndexSection lists current decisions one line each: those linked to
+// the session's scope first, then project-wide ones, then the newest others.
+// Titles are the always-loaded part; each record holds the reasons and its
+// paths, and the post-tool hook shows path-linked records on use. When the
+// whole list does not fit, the fallback keeps what fits in two fifths of the
+// packet and says how to reach the rest.
+func decisionIndexSection(decisions []continuity.Decision, scopes []string, limit int) (contextPacketSection, bool) {
+	if len(decisions) == 0 {
+		return contextPacketSection{}, false
+	}
+	rank := func(decision continuity.Decision) int {
+		switch {
+		case len(scopes) > 0 && !decision.ProjectWide() && contextPathsOverlap(decision.Paths, scopes):
+			return 0
+		case decision.ProjectWide():
+			return 1
+		default:
+			return 2
+		}
+	}
+	ordered := append([]continuity.Decision(nil), decisions...)
+	sort.SliceStable(ordered, func(i, j int) bool {
+		if rank(ordered[i]) != rank(ordered[j]) {
+			return rank(ordered[i]) < rank(ordered[j])
+		}
+		return ordered[i].Date.After(ordered[j].Date)
+	})
+	const header = "Current decisions in docs/adr (the file holds the reasons):\n"
+	lines := make([]string, len(ordered))
+	for index, decision := range ordered {
+		lines[index] = fmt.Sprintf("- %s → %s\n", singleLineSnippet(decision.Title, 160), decision.File)
+	}
+	var fallback strings.Builder
+	fallback.WriteString(header)
+	included := 0
+	for _, line := range lines {
+		if fallback.Len()+len(line) > limit*2/5-120 {
+			break
+		}
+		fallback.WriteString(line)
+		included++
+	}
+	if included < len(lines) {
+		fmt.Fprintf(&fallback, "- %d more current decisions; continuity recall --path <file> lists those linked to a file.\n", len(lines)-included)
+	}
+	return contextPacketSection{full: header + strings.Join(lines, ""), fallback: fallback.String()}, true
 }
 
 func prioritizeContextCapsules(capsules []continuity.ContextCapsule) []continuity.ContextCapsule {
@@ -718,17 +778,36 @@ func integrateCommand(args []string) error {
 type hookInput struct {
 	SessionID string          `json:"session_id"`
 	Cwd       string          `json:"cwd"`
+	Source    string          `json:"source"`
 	ToolName  string          `json:"tool_name"`
 	ToolInput json.RawMessage `json:"tool_input"`
 }
 
+// hookPhases lists the lifecycle hooks each harness adapter registers.
+var hookPhases = map[string]map[string]bool{
+	"codex":  {"session-start": true, "subagent-start": true, "user-prompt": true, "pretool": true, "posttool": true},
+	"claude": {"session-start": true, "posttool": true},
+}
+
+const (
+	// sessionStartContextLimit bounds the restart packet a hook injects. Claude
+	// Code accepts 10,000 characters and Codex about 2,500 tokens by default.
+	sessionStartContextLimit = 6000
+	shownRecordRetention     = 7 * 24 * time.Hour
+	maxTouchedPaths          = 8
+)
+
 func hookCommand(args []string) error {
 	if len(args) < 2 {
-		return errors.New("usage: continuity hook codex session-start|subagent-start|user-prompt|pretool")
+		return errors.New("usage: continuity hook codex|claude <phase>")
 	}
 	harness, phase := args[0], args[1]
-	if harness != "codex" {
+	phases, known := hookPhases[harness]
+	if !known {
 		return fmt.Errorf("unknown hook harness %q", harness)
+	}
+	if !phases[phase] {
+		return fmt.Errorf("unknown %s hook phase %q", harness, phase)
 	}
 	flags := flag.NewFlagSet("hook "+harness+" "+phase, flag.ContinueOnError)
 	flags.SetOutput(os.Stderr)
@@ -752,10 +831,23 @@ func hookCommand(args []string) error {
 		return nil // Hooks must not interfere with unrelated directories.
 	}
 	owner := ownerForSession(input.SessionID)
+	if harness == "claude" && strings.TrimSpace(input.SessionID) != "" {
+		owner = "claude:" + strings.TrimSpace(input.SessionID)
+	}
 	switch phase {
 	case "session-start", "subagent-start":
 		heartbeatOwnedClaim(root, owner)
-		context, contextErr := compactContext(root, owner, 1800, nil)
+		if phase == "session-start" {
+			if input.Source == "compact" || input.Source == "clear" {
+				if err := continuity.ResetShownRecords(root, owner); err != nil {
+					return err
+				}
+			}
+			if err := continuity.PruneShownRecords(root, shownRecordRetention); err != nil {
+				return err
+			}
+		}
+		context, contextErr := compactContext(root, owner, sessionStartContextLimit, nil)
 		if contextErr != nil {
 			context = "Continuity state could not be loaded: " + contextErr.Error()
 		}
@@ -786,9 +878,104 @@ func hookCommand(args []string) error {
 			return nil
 		}
 		return nil
+	case "posttool":
+		paths := touchedPaths(root, input)
+		if len(paths) == 0 {
+			return nil
+		}
+		shown, err := continuity.LoadShownRecords(root, owner)
+		if err != nil {
+			return err
+		}
+		report, added, err := pathRecall(root, paths, shown)
+		if err != nil || report == "" {
+			return err
+		}
+		if err := continuity.AddShownRecords(root, owner, added); err != nil {
+			return err
+		}
+		return emitHookContext("PostToolUse", report)
 	default:
 		return fmt.Errorf("unknown %s hook phase %q", harness, phase)
 	}
+}
+
+// touchedPaths returns the repository paths a tool call read or changed.
+// Claude Code file tools name them directly, Codex patches name them in their
+// headers, and a shell command counts every argument that names an existing
+// repository path. Malformed tool input yields no paths: the hook only adds
+// optional context and must not fail the tool call it observes.
+func touchedPaths(root string, input hookInput) []string {
+	var tool struct {
+		FilePath     string `json:"file_path"`
+		NotebookPath string `json:"notebook_path"`
+		Command      string `json:"command"`
+	}
+	if err := json.Unmarshal(input.ToolInput, &tool); err != nil {
+		return nil
+	}
+	candidates := []string{}
+	switch {
+	case tool.FilePath != "":
+		candidates = append(candidates, tool.FilePath)
+	case tool.NotebookPath != "":
+		candidates = append(candidates, tool.NotebookPath)
+	case input.ToolName == "apply_patch":
+		candidates = patchPaths(tool.Command)
+	case input.ToolName == "Bash":
+		candidates = shellPathArguments(tool.Command)
+	}
+	base := input.Cwd
+	if base == "" {
+		base = root
+	}
+	seen := map[string]bool{}
+	paths := []string{}
+	for _, candidate := range candidates {
+		if !filepath.IsAbs(candidate) {
+			candidate = filepath.Join(base, candidate)
+		}
+		if input.ToolName == "Bash" {
+			if _, err := os.Stat(candidate); err != nil {
+				continue
+			}
+		}
+		path, inside := repositoryPath(root, candidate)
+		if !inside || path == "." || seen[path] {
+			continue
+		}
+		seen[path] = true
+		paths = append(paths, path)
+		if len(paths) == maxTouchedPaths {
+			break
+		}
+	}
+	return paths
+}
+
+func patchPaths(patch string) []string {
+	paths := []string{}
+	for _, line := range strings.Split(patch, "\n") {
+		for _, prefix := range []string{"*** Add File: ", "*** Update File: ", "*** Delete File: ", "*** Move to: "} {
+			if path, found := strings.CutPrefix(strings.TrimSpace(line), prefix); found {
+				paths = append(paths, strings.TrimSpace(path))
+			}
+		}
+	}
+	return paths
+}
+
+func shellPathArguments(command string) []string {
+	fields := strings.FieldsFunc(command, func(r rune) bool {
+		return unicode.IsSpace(r) || strings.ContainsRune(";|&<>()'\"`", r)
+	})
+	arguments := []string{}
+	for _, field := range fields {
+		if !strings.HasPrefix(field, "-") && strings.ContainsAny(field, "/.") {
+			arguments = append(arguments, field)
+		}
+	}
+	return arguments
 }
 
 // heartbeatOwnedClaim lets the same identified worker resume its unrecovered

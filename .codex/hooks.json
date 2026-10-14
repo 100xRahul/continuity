@@ -10,7 +10,7 @@
             "command": "sh \"$(git rev-parse --show-toplevel)/.agents/hooks/continuity.sh\" codex session-start",
             "statusMessage": "Loading shared Continuity status",
             "timeout": 10,
-            "additionalContextLimit": 1800
+            "additionalContextLimit": 2000
           }
         ]
       }
@@ -24,7 +24,7 @@
             "command": "sh \"$(git rev-parse --show-toplevel)/.agents/hooks/continuity.sh\" codex subagent-start",
             "statusMessage": "Loading shared Continuity status",
             "timeout": 10,
-            "additionalContextLimit": 1800
+            "additionalContextLimit": 2000
           }
         ]
       }
@@ -51,6 +51,20 @@
             "command": "sh \"$(git rev-parse --show-toplevel)/.agents/hooks/continuity.sh\" codex pretool",
             "statusMessage": "Checking worktree claim",
             "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "^(Bash|apply_patch|Edit|Write)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"$(git rev-parse --show-toplevel)/.agents/hooks/continuity.sh\" codex posttool",
+            "statusMessage": "Loading linked decisions",
+            "timeout": 10,
+            "additionalContextLimit": 1500
           }
         ]
       }
